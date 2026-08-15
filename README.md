@@ -64,28 +64,20 @@ Xcode 工程——.app 只是一个目录加 Info.plist。
 git tag v0.2.0 && git push origin v0.2.0
 ```
 
-本地手动发布：
+**签名发布（推荐，产物下载即用）**——一条命令完成 打包 → 公证 → 装订 → Release：
 
 ```bash
-./package-mac.sh release
-ditto -c -k --keepParent build/OpenimgMac.app OpenimgMac.zip
-gh release create v0.2.0 OpenimgMac.zip --title "v0.2.0" --notes "…"
+./release.sh v0.2.0
 ```
 
-**去掉 Gatekeeper 拦截**需要 Apple Developer Program（99 美元/年）的
-Developer ID 证书 + 公证：
+一次性前置（见 `release.sh` 头部注释）：装 Developer ID Application 证书
+（Xcode → Settings → Accounts → Manage Certificates）+ 用
+`xcrun notarytool store-credentials openimg-notary` 存一次公证凭据
+（App 专用密码在 appleid.apple.com 生成）。
 
-```bash
-SIGN_IDENTITY="Developer ID Application: <名字> (<TEAMID>)" ./package-mac.sh release
-ditto -c -k --keepParent build/OpenimgMac.app OpenimgMac.zip
-xcrun notarytool submit OpenimgMac.zip --keychain-profile openimg-notary --wait
-xcrun stapler staple build/OpenimgMac.app
-# 重新压缩已装订的 .app 再上传 Release
-```
-
-（`--keychain-profile` 先用 `xcrun notarytool store-credentials` 配一次
-App Store Connect API 密钥。）免费 Personal Team 签出来的 7 天过期且只能本机跑，
-不能用于分发。
+没配证书时 CI 的 tag 发布产出 ad-hoc 构建（用户需右键打开一次）；同名
+release 已由 release.sh 发过时 CI 自动让位。免费 Personal Team 签出来的
+7 天过期且只能本机跑，不能用于分发。
 
 ## 几个刻意的选择
 

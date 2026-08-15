@@ -27,6 +27,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # 本地 release.sh(签名+公证)先发过的话这里让位——签名产物优于 ad-hoc
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "release 已存在(签名发布),跳过 ad-hoc 产物"
+            exit 0
+          fi
           gh release create "${GITHUB_REF_NAME}" OpenimgMac.zip \
             --title "${GITHUB_REF_NAME}" \
             --notes "ad-hoc 签名构建。首次打开:右键 App → 打开 → 再点「打开」;或 \`xattr -d com.apple.quarantine\` 解除隔离。"
