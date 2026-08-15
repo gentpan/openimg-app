@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ImageIO
 import OpenimgKit
 
 /// In-memory cache for decoded thumbnails.
@@ -24,7 +25,9 @@ final class ThumbnailCache {
     static let full = ThumbnailCache(limit: 6)
 
     private let cache = NSCache<NSString, NSImage>()
-    private var inFlight: [String: Task<NSImage?, Never>] = [:]
+    // 跨并发边界只传 CGImage:NSImage 的 Sendable 一致性在正式版 SDK 里
+    // 明确不可用(本机 beta 放行只是巧合),Task 的 Success 必须 Sendable。
+    private var inFlight: [String: Task<CGImage?, Never>] = [:]
 
     private init(limit: Int) { cache.countLimit = limit }
 
@@ -32,19 +35,35 @@ final class ThumbnailCache {
         if let hit = cache.object(forKey: url as NSString) { return hit }
         // Two cards can ask for the same URL in the same frame — dedup so the
         // second one waits on the first request instead of starting another.
-        if let running = inFlight[url] { return await running.value }
+        if let running = inFlight[url] {
+            guard let cg = await running.value else { return nil }
+            return cachedImage(cg, for: url)
+        }
 
-        let task = Task<NSImage?, Never> { [weak self] in
+        let task = Task<CGImage?, Never> {
             guard let client else { return nil }
-            guard let data = try? await client.fetchData(url),
-                  let image = NSImage(data: data) else { return nil }
-            await MainActor.run { self?.cache.setObject(image, forKey: url as NSString) }
-            return image
+            guard let data = try? await client.fetchData(url) else { return nil }
+            return Self.decode(data)
         }
         inFlight[url] = task
-        let result = await task.value
+        let cg = await task.value
         inFlight[url] = nil
-        return result
+        guard let cg else { return nil }
+        return cachedImage(cg, for: url)
+    }
+
+    /// CGImage → NSImage 的包装与落缓存,只发生在主 actor 上。
+    private func cachedImage(_ cg: CGImage, for url: String) -> NSImage {
+        if let hit = cache.object(forKey: url as NSString) { return hit }
+        let img = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        cache.setObject(img, forKey: url as NSString)
+        return img
+    }
+
+    nonisolated private static func decode(_ data: Data) -> CGImage? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(src) >= 1 else { return nil }
+        return CGImageSourceCreateImageAtIndex(src, 0, nil)
     }
 }
 
