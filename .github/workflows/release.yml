@@ -1,0 +1,26 @@
+# 推 v* 标签即构建并发布。产物是 ad-hoc 签名的 .app(zip):
+# 配好 Developer ID 证书的 secrets 之前,用户侧需要右键打开一次。
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: 自检
+        run: cd OpenimgKit && swift run KitCheck
+      - name: 打包
+        run: ./package-mac.sh release
+      - name: 压缩
+        run: ditto -c -k --keepParent build/OpenimgMac.app OpenimgMac.zip
+      - name: 发布
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" OpenimgMac.zip \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "ad-hoc 签名构建。首次打开:右键 App → 打开 → 再点「打开」;或 \`xattr -d com.apple.quarantine\` 解除隔离。"
