@@ -4,6 +4,7 @@ name: release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch: {}
 permissions:
   contents: write
 jobs:
@@ -13,11 +14,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: 自检
         run: cd OpenimgKit && swift run KitCheck
+      # 单独一步可见输出的构建:package-mac.sh 为了本地清爽把编译日志吞进
+      # /dev/null,CI 里失败会变成无声的 exit 1
+      - name: 构建
+        run: cd OpenimgKit && swift build -c release --product OpenimgMac
       - name: 打包
         run: ./package-mac.sh release
       - name: 压缩
         run: ditto -c -k --keepParent build/OpenimgMac.app OpenimgMac.zip
       - name: 发布
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
