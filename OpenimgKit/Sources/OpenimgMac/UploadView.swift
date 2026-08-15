@@ -210,12 +210,19 @@ struct UploadView: View {
 
     /// NSItemProvider returns a file URL as its Data representation; decoding it
     /// any other way silently yields nil for every drop.
+    ///
+    /// 用 completion 版接口而不是 async 的 loadItem:后者返回
+    /// `any NSSecureCoding`,在正式版 SDK 的严格并发下不可跨界发送
+    /// (本机 beta 放行只是巧合)。Data 是 Sendable,包个 continuation 了事。
     private func urls(from providers: [NSItemProvider]) async -> [URL] {
         var out: [URL] = []
         for p in providers {
-            guard let item = try? await p.loadItem(forTypeIdentifier: UTType.fileURL.identifier),
-                  let data = item as? Data,
-                  let url = URL(dataRepresentation: data, relativeTo: nil) else { continue }
+            let data: Data? = await withCheckedContinuation { cont in
+                _ = p.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
+                    cont.resume(returning: data)
+                }
+            }
+            guard let data, let url = URL(dataRepresentation: data, relativeTo: nil) else { continue }
             out.append(url)
         }
         return out
