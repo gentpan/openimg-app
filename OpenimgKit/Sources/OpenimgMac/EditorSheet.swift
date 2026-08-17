@@ -149,19 +149,25 @@ struct EditorCanvas: View {
             Divider().overlay(Color.white.opacity(0.08))
             bottomBar
         }
-        .frame(minWidth: 880, idealWidth: 980, minHeight: 620, idealHeight: 700)
-        .background(Color.black.opacity(0.92))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.35))
         .task {
             sourcePixelSize = ImageEdit.pixelSize(of: source) ?? .zero
             await refreshPreview()
         }
         .onChange(of: mode) { _, _ in activeStroke = [] }
-        .confirmationDialog(L.s.editor.discardTitle, isPresented: $showCancelConfirm) {
-            Button(L.s.editor.discardConfirm, role: .destructive) { model.editTarget = nil }
-            Button(L.s.editor.keepEditing, role: .cancel) {}
-        } message: {
-            Text(L.s.editor.discardMessage)
+        .overlay {
+            if showCancelConfirm {
+                ConfirmDialog(
+                    title: L.s.editor.discardTitle,
+                    message: L.s.editor.discardMessage,
+                    confirmTitle: L.s.editor.discardConfirm,
+                    cancelTitle: L.s.editor.keepEditing,
+                    onConfirm: { showCancelConfirm = false; model.editTarget = nil },
+                    onCancel: { showCancelConfirm = false })
+            }
         }
+        .animation(.easeOut(duration: 0.15), value: showCancelConfirm)
     }
 
     // MARK: - 工具栏
