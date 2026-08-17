@@ -26,15 +26,15 @@ struct LoginView: View {
             VStack(spacing: 8) {
                 if model.useToken {
                     Field(icon: "key.fill") {
-                        SecureField("oimg_…", text: $model.token)
+                        SecureField(L.s.login.tokenPlaceholder, text: $model.token)
                             .onSubmit { Task { await model.primaryAction() } }
                     }
                 } else {
                     Field(icon: "envelope.fill") {
-                        TextField("you@example.com", text: $model.email)
+                        TextField(L.s.login.emailPlaceholder, text: $model.email)
                     }
                     Field(icon: "lock.fill") {
-                        SecureField("密码", text: $model.password)
+                        SecureField(L.s.login.passwordPlaceholder, text: $model.password)
                             .onSubmit { Task { await model.primaryAction() } }
                     }
                 }
@@ -45,7 +45,7 @@ struct LoginView: View {
             } label: {
                 HStack(spacing: 7) {
                     if model.busy { ProgressView().controlSize(.small).tint(.white) }
-                    Text(model.busy ? "登录中…" : "登录")
+                    Text(model.busy ? L.s.login.submitting : L.s.login.submit)
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -69,11 +69,11 @@ struct LoginView: View {
                     .buttonStyle(QuietButton())
                     .disabled(model.busy)
                     .help(m.title)
-                    .accessibilityLabel("使用 \(m.title) 登录")
+                    .accessibilityLabel(L.s.login.signInWith(m.title))
                 }
             }
 
-            Button(model.useToken ? "改用邮箱密码登录" : "改用访问令牌登录") {
+            Button(model.useToken ? L.s.login.usePasswordSignIn : L.s.login.useTokenSignIn) {
                 withAnimation(.easeInOut(duration: 0.18)) { model.useToken.toggle() }
             }
             .buttonStyle(.plain)
@@ -82,9 +82,7 @@ struct LoginView: View {
 
             // Said before the field is filled in, not after: "we store a token,
             // not your password" only reassures in advance.
-            Text(model.useToken
-                 ? "令牌保存在钥匙串，不写入配置文件"
-                 : "密码只用来换取一枚这台设备专用的令牌，不会被保存")
+            Text(model.useToken ? L.s.login.tokenNote : L.s.login.passwordNote)
                 .font(.caption2).foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
         }
@@ -109,11 +107,11 @@ struct LoginView: View {
             // Ubuntu on the wordmark only — it has no CJK coverage, and letting
             // it fall through mid-sentence puts two typefaces in one line.
             HStack(spacing: 0) {
-                Text("登录 ").font(.title2.weight(.semibold))
+                Text(L.s.login.headerPrefix).font(.title2.weight(.semibold))
                 Text("Open").font(.brand(21, .bold))
                 Text("img").font(.brand(21, .bold)).foregroundStyle(Color.brand)
             }
-            Text("图片托管与分发").font(.caption).foregroundStyle(.secondary)
+            Text(L.s.login.tagline).font(.caption).foregroundStyle(.secondary)
         }
         .padding(.bottom, 2)
     }
@@ -121,7 +119,7 @@ struct LoginView: View {
     private var divider: some View {
         HStack(spacing: 10) {
             Rectangle().fill(.white.opacity(0.10)).frame(height: 1)
-            Text("或").font(.caption2).foregroundStyle(.tertiary)
+            Text(L.s.login.orDivider).font(.caption2).foregroundStyle(.tertiary)
             Rectangle().fill(.white.opacity(0.10)).frame(height: 1)
         }
     }

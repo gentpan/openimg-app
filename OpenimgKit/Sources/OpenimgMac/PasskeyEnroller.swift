@@ -37,7 +37,8 @@ final class PasskeyEnroller: NSObject, @unchecked Sendable,
             as? ASAuthorizationPlatformPublicKeyCredentialRegistration {
             continuation?.resume(returning: reg)
         } else {
-            continuation?.resume(throwing: OpenimgError.transport("系统返回了未知的凭证类型"))
+            continuation?.resume(
+                throwing: OpenimgError.transport(L.s.settings.passkeyUnknownCredential))
         }
         continuation = nil
     }
@@ -65,7 +66,7 @@ extension AppModel {
             let pk = begin.options.publicKey
             guard let challenge = Data(base64URL: pk.challenge),
                   let userID = Data(base64URL: pk.user.id) else {
-                announce("服务器返回的注册挑战无法解析")
+                announce(L.s.settings.passkeyChallengeUnreadable)
                 return false
             }
             let reg = try await PasskeyEnroller().register(
@@ -74,7 +75,7 @@ extension AppModel {
                 userID: userID,
                 userName: pk.user.name ?? account.email)
             guard let att = reg.rawAttestationObject else {
-                announce("系统未返回注册凭证")
+                announce(L.s.settings.passkeyNoCredential)
                 return false
             }
             try await client().passkeyEnrollFinish(
@@ -85,13 +86,13 @@ extension AppModel {
                                                  clientDataJSON: reg.rawClientDataJSON))
             await loadPasskeys()
             passkeyCodeSent = false
-            announce("Passkey 已添加")
+            announce(L.s.settings.passkeyAdded)
             return true
         } catch let e as ASAuthorizationError where e.code == .canceled {
             return false // 用户自己关掉的,不聒噪
         } catch is ASAuthorizationError {
             // ad-hoc 构建走到这:无 entitlement,系统拒绝为域名创建凭证
-            announce("系统拒绝创建：此构建未正式签名，无法证明域名归属。请先在网站上添加，正式签名版发布后 App 内即可直接添加。", seconds: 9)
+            announce(L.s.settings.passkeyUnsignedBuild, seconds: 9)
             return false
         } catch {
             announce(message(error))

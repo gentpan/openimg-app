@@ -67,11 +67,11 @@ struct UploadView: View {
             Button {
                 model.pickAndEdit()
             } label: {
-                Label("编辑后上传…", systemImage: "crop")
+                Label(L.s.upload.editThenUpload, systemImage: "crop")
             }
             .controlSize(.small)
-            .help("裁剪、马赛克、旋转、水印，改完直接进上传队列")
-            Toggle("单张拖入先打开编辑器", isOn: Binding(
+            .help(L.s.upload.editHelp)
+            Toggle(L.s.upload.editOnDrop, isOn: Binding(
                 get: { model.editOnDrop },
                 set: { model.editOnDrop = $0; model.saveWatermarkPrefs() }
             ))
@@ -89,12 +89,12 @@ struct UploadView: View {
                     .foregroundStyle(Color.brand)
                     .frame(width: 88, height: 88)
                     .background(Circle().fill(Color.brand.opacity(0.12)))
-                Text("把图片或文件夹拖到这里").font(.title2.weight(.medium))
-                Text("或点击选择，文件夹会自动展开")
+                Text(L.s.upload.dropTitle).font(.title2.weight(.medium))
+                Text(L.s.upload.dropHint)
                     .font(.callout).foregroundStyle(.secondary)
             }
         } else {
-            Label("继续添加", systemImage: "plus")
+            Label(L.s.upload.addMore, systemImage: "plus")
                 .font(.callout).foregroundStyle(.secondary)
         }
     }
@@ -106,18 +106,19 @@ struct UploadView: View {
             HStack {
                 if model.uploading {
                     ProgressView().controlSize(.small)
-                    Text("上传中 \(model.queue.filter { $0.state == .done }.count) / \(model.queue.count)")
+                    Text(L.s.upload.uploadingProgress(
+                        model.queue.filter { $0.state == .done }.count, model.queue.count))
                         .font(.callout)
                 } else {
                     let ok = model.queue.filter { $0.state == .done }.count
                     let bad = model.queue.count - ok
                     Image(systemName: bad == 0 ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                         .foregroundStyle(bad == 0 ? .green : .orange)
-                    Text(bad == 0 ? "\(ok) 张全部完成" : "\(ok) 张完成，\(bad) 张未成功")
+                    Text(bad == 0 ? L.s.upload.allDone(ok) : L.s.upload.partlyDone(ok, bad))
                         .font(.callout)
                 }
                 Spacer()
-                Button(model.uploading ? "上传中…" : "清空列表") { model.clearQueue() }
+                Button(model.uploading ? L.s.upload.uploadingBusy : L.s.upload.clearList) { model.clearQueue() }
                     .buttonStyle(QuietButton())
                     .disabled(model.uploading)
             }
@@ -142,8 +143,9 @@ struct UploadView: View {
 
     private var formatRow: some View {
         VStack(spacing: 7) {
-            Text("上传后复制").font(.caption).foregroundStyle(.secondary)
-            PillRow(items: LinkFormat.allCases, label: \.label, selection: $model.linkFormat)
+            Text(L.s.upload.copyAfterUpload).font(.caption).foregroundStyle(.secondary)
+            PillRow(items: LinkFormat.allCases, label: { L.s.gallery.linkLabel($0) },
+                    selection: $model.linkFormat)
         }
     }
 
@@ -160,14 +162,14 @@ struct UploadView: View {
     /// here is knowing what it is currently set to.
     private var settingsHint: some View {
         HStack(spacing: 6) {
-            Text(model.uploadMode.label)
+            Text(L.s.settings.modeLabel(model.uploadMode))
             Text("·").foregroundStyle(.quaternary)
-            Text(model.variantFormat.label)
+            Text(L.s.settings.variantLabel(model.variantFormat))
             if model.maxImageWidth > 0 {
                 Text("·").foregroundStyle(.quaternary)
-                Text("最大 \(model.maxImageWidth)px")
+                Text(L.s.upload.maxWidth(model.maxImageWidth))
             }
-            Button("在设置里改") { model.section = .settings }
+            Button(L.s.upload.changeInSettings) { model.section = .settings }
                 .buttonStyle(LinkButton())
         }
         .font(.caption)
@@ -178,7 +180,7 @@ struct UploadView: View {
         let px: Int
         init(_ px: Int) { self.px = px }
         var id: Int { px }
-        var label: String { px == 0 ? "不限" : "\(px)" }
+        var label: String { px == 0 ? L.s.upload.unlimited : "\(px)" }
     }
 
     @ViewBuilder
@@ -190,10 +192,11 @@ struct UploadView: View {
                     // Before the upload rather than after the failure: unlike
                     // the per-minute limit, the daily count does not clear
                     // until tomorrow, so it is not something to retry through.
-                    stat("今日剩余", "\(left) 张", warn: left <= 5)
+                    stat(L.s.upload.remainingToday, L.s.upload.imageCount(left), warn: left <= 5)
                 }
-                stat("单文件上限", model.bytes(t.maxFileSize))
-                stat("支持格式", t.allowedFormats.prefix(4).joined(separator: " · ").uppercased())
+                stat(L.s.upload.maxFileSize, model.bytes(t.maxFileSize))
+                stat(L.s.upload.supportedFormats,
+                     t.allowedFormats.prefix(4).joined(separator: " · ").uppercased())
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 12)
@@ -242,14 +245,14 @@ private struct QueueRow: View {
                 HStack(spacing: 6) {
                     Text(item.name).font(.callout).lineLimit(1).truncationMode(.middle)
                     if let sent = item.sentBytes, item.size > 0 {
-                        Text("已缩至 \(Int(Double(sent) / Double(item.size) * 100))%")
+                        Text(L.s.upload.shrunkTo(Int(Double(sent) / Double(item.size) * 100)))
                             .font(.system(size: 9, weight: .medium))
                             .foregroundStyle(Color.brand)
                             .padding(.horizontal, 5).padding(.vertical, 1.5)
                             .background(Capsule().fill(Color.brand.opacity(0.16)))
                     }
                     if item.deduplicated {
-                        Text("秒传")
+                        Text(L.s.upload.deduplicated)
                             .font(.system(size: 9, weight: .medium))
                             .foregroundStyle(Color.success)
                             .padding(.horizontal, 5).padding(.vertical, 1.5)
@@ -272,9 +275,9 @@ private struct QueueRow: View {
 
     private var detail: String {
         switch item.state {
-        case .queued: "等待中"
+        case .queued: L.s.upload.waiting
         case .uploading: "\(Int(item.progress * 100))%"
-        case .done: item.size > 0 ? bytes(item.size) : "完成"
+        case .done: item.size > 0 ? bytes(item.size) : L.s.upload.done
         case .failed: ""
         }
     }

@@ -4,7 +4,7 @@ import OpenimgKit
 /// A day in the current week, and whether it was claimed.
 struct CheckinDay: Identifiable {
     let id: String        // yyyy-MM-dd
-    let label: String     // 一 二 三 …
+    let label: String     // 「一 二 三 …」/「M T W …」,取自 Locale
     let claimed: Bool
     let isToday: Bool
     let future: Bool
@@ -68,13 +68,13 @@ struct MilestoneBar: View {
                 if reward > 0 {
                     // The number is the point. "Keep your streak" means nothing
                     // without saying what the streak is worth.
-                    Text("满 \(total) 天 +\(bytes(reward))")
+                    Text(L.s.common.milestoneReward(total, bytes(reward)))
                         .font(.caption).foregroundStyle(Color.brand)
                 }
             }
             ProgressBar(value: total > 0 ? Double(current) / Double(total) : 0)
                 .frame(height: 6)
-            Text("\(current) / \(total) 天")
+            Text(L.s.common.dayProgress(current, total))
                 .font(.caption2).foregroundStyle(.tertiary)
         }
     }

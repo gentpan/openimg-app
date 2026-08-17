@@ -89,13 +89,13 @@ extension AppModel {
         }
         export?.finished = true
         if let e = export {
-            let counts = "新下载 \(e.done),已存在跳过 \(e.skipped)" + (e.failed > 0 ? ",失败 \(e.failed)" : "")
+            let counts = L.s.gallery.exportCounts(e.done, e.skipped, e.failed)
             let line = if let err = e.errorMessage {
-                "导出中断:\(err)(\(counts))"
+                L.s.gallery.exportInterrupted(err, counts)
             } else if exportCancelled {
-                "导出已取消:\(counts)"
+                L.s.gallery.exportCancelled(counts)
             } else {
-                "导出完成:\(counts)"
+                L.s.gallery.exportFinished(counts)
             }
             announce(line, seconds: 8)
         }

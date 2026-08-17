@@ -17,9 +17,52 @@ enum Metrics {
     static let control: CGFloat = 32
 }
 
+/// 品牌色相。与网站的 `data-brand` 同一套取值,两端切换后观感一致。
+///
+/// 产品固定深色,可切的只有色相——浅色主题在网站上就删掉了(品牌绿在白底
+/// 对比度 1.79:1 不可用)。
+enum BrandTint: String, CaseIterable, Sendable {
+    case green, violet
+
+    /// 静息填充色 = 网站的 `--color-brand-600`。
+    var accent: Color {
+        switch self {
+        case .green: Color(red: 0x5D / 255, green: 0xE3 / 255, blue: 0x1D / 255)
+        case .violet: Color(red: 0x7C / 255, green: 0x2E / 255, blue: 0xE0 / 255)
+        }
+    }
+
+    /// 填充之上的前景 = `--color-brand-ink`。绿的相对亮度 0.574,白字在它
+    /// 上面只有 1.68:1(不是偏低,是读不了),所以配近黑;紫的 0.135,白字
+    /// 6.32:1,配白。整套控件只认这一个变量,换色不用改任何组件。
+    var ink: Color {
+        switch self {
+        case .green: Color(red: 0x0A / 255, green: 0x1B / 255, blue: 0x02 / 255)
+        case .violet: .white
+        }
+    }
+
+    /// 大字与图表用的浅色阶 = `--color-brand-display`。
+    var display: Color {
+        switch self {
+        case .green: Color(red: 0x8B / 255, green: 0xF5 / 255, blue: 0x4A / 255)
+        case .violet: Color(red: 0xA8 / 255, green: 0x7D / 255, blue: 0xFF / 255)
+        }
+    }
+
+    /// 当前色相。做成静态量而不是 Environment:`Color.brand` 在 55 处被
+    /// 直接引用(含 ButtonStyle 这类拿不到 Environment 的地方),改成环境值
+    /// 要动全部调用点。AppModel 改它时会同时发布变更,观察 model 的视图
+    /// 重绘时自然读到新值。
+    nonisolated(unsafe) static var current: BrandTint = {
+        BrandTint(rawValue: UserDefaults.standard.string(forKey: "brandTint") ?? "") ?? .green
+    }()
+}
+
 extension Color {
     /// Same value as the site's `--color-brand-600`.
-    static let brand = Color(red: 0x5D / 255, green: 0xE3 / 255, blue: 0x1D / 255)
+    static var brand: Color { BrandTint.current.accent }
+    static var brandDisplay: Color { BrandTint.current.display }
 
     /// What goes *on* a brand fill. Near-black with a trace of the brand hue,
     /// so it reads as part of the control rather than as borrowed body text.
@@ -27,7 +70,7 @@ extension Color {
     /// can be handed to `.tint`, which does not take a hierarchical style.
     static let secondaryLabel = Color(nsColor: .secondaryLabelColor)
 
-    static let brandInk = Color(red: 0x0A / 255, green: 0x1B / 255, blue: 0x02 / 255)
+    static var brandInk: Color { BrandTint.current.ink }
 
     /// "It worked" — kept at a distinctly different hue (teal, 173°) from the
     /// brand (101°) so a success message never reads as brand chrome.

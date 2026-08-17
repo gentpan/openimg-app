@@ -11,7 +11,7 @@ import OpenimgKit
 struct Lightbox: View {
     @ObservedObject var model: AppModel
     let img: RemoteImage
-    @State private var copied: String?
+    @State private var copied: LinkFormat?
     @State private var full: NSImage?
     @State private var loadingFull = false
 
@@ -125,7 +125,9 @@ struct Lightbox: View {
                         .font(.headline)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(img.createdAt.formatted(date: .abbreviated, time: .shortened))
+                    Text(img.createdAt.formatted(
+                        Date.FormatStyle(date: .abbreviated, time: .shortened)
+                            .locale(L.locale)))
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
@@ -137,7 +139,7 @@ struct Lightbox: View {
 
                 Divider().overlay(Color.white.opacity(0.08))
 
-                Text("复制链接").font(.caption).foregroundStyle(.secondary)
+                Text(L.s.common.copyLink).font(.caption).foregroundStyle(.secondary)
                 VStack(spacing: 6) {
                     ForEach(LinkFormat.allCases) { f in
                         copyRow(f)
@@ -151,14 +153,16 @@ struct Lightbox: View {
                         Button {
                             if let u = URL(string: short) { NSWorkspace.shared.open(u) }
                         } label: {
-                            Label("打开分享页", systemImage: "safari").frame(maxWidth: .infinity)
+                            Label(L.s.gallery.openSharePage, systemImage: "safari")
+                                .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(QuietButton())
                     }
                     Button {
                         Task { await model.delete(img) }
                     } label: {
-                        Label("删除这张图片", systemImage: "trash").frame(maxWidth: .infinity)
+                        Label(L.s.gallery.deleteImage, systemImage: "trash")
+                            .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(DangerButton())
                 }
@@ -182,14 +186,14 @@ struct Lightbox: View {
     private func copyRow(_ f: LinkFormat) -> some View {
         Button {
             model.copy(f.render(img))
-            withAnimation(.easeOut(duration: 0.15)) { copied = f.label }
+            withAnimation(.easeOut(duration: 0.15)) { copied = f }
             Task {
                 try? await Task.sleep(for: .seconds(1.6))
                 withAnimation(.easeOut(duration: 0.2)) { copied = nil }
             }
         } label: {
             HStack(spacing: 8) {
-                Text(f.label)
+                Text(L.s.gallery.linkLabel(f))
                     .font(.caption.weight(.medium))
                     .frame(width: 62, alignment: .leading)
                 Text(f.render(img))
@@ -197,14 +201,14 @@ struct Lightbox: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 0)
-                Image(systemName: copied == f.label ? "checkmark" : "doc.on.doc")
+                Image(systemName: copied == f ? "checkmark" : "doc.on.doc")
                     .font(.system(size: 11))
-                    .foregroundStyle(copied == f.label ? AnyShapeStyle(Color.brand) : AnyShapeStyle(.tertiary))
+                    .foregroundStyle(copied == f ? AnyShapeStyle(Color.brand) : AnyShapeStyle(.tertiary))
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(.white.opacity(copied == f.label ? 0.10 : 0.05))
+                    .fill(.white.opacity(copied == f ? 0.10 : 0.05))
             )
             .contentShape(Rectangle())
         }

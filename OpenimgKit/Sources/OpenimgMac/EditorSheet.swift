@@ -16,7 +16,7 @@ extension AppModel {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.image]
-        panel.prompt = "编辑"
+        panel.prompt = L.s.editor.pickPrompt
         guard panel.runModal() == .OK, let url = panel.url else { return }
         openEditor(url)
     }
@@ -26,11 +26,11 @@ extension AppModel {
         case .ok:
             editTarget = EditTarget(url: url)
         case .animated:
-            announce("动图不支持编辑，可直接上传")
+            announce(L.s.editor.animatedUnsupported)
         case .tooLarge:
-            announce("图片超过 8000 万像素，暂不支持编辑，可直接上传")
+            announce(L.s.editor.tooLarge(ImageEdit.maxEditPixels / 1_000_000))
         case .unreadable:
-            announce("无法读取此图片（文件可能已损坏）")
+            announce(L.s.editor.unreadable)
         }
     }
 
@@ -64,7 +64,7 @@ extension AppModel {
             defer { editSubmitting = false }
             let rendered = await Task.detached { ImageEdit.render(source: source, spec: spec) }.value
             guard let out = rendered else {
-                announce("编辑渲染失败，未上传——请重试或取消")
+                announce(L.s.editor.renderFailed)
                 return
             }
             editTarget = nil
@@ -105,7 +105,12 @@ struct EditorSheet: View {
     private static let transposedRatio = ["4:3": "3:4", "3:4": "4:3", "16:9": "9:16", "9:16": "16:9"]
 
     enum Mode: String, CaseIterable {
-        case crop = "裁剪", mosaic = "马赛克"
+        case crop, mosaic
+
+        /// rawValue 是稳定标识,显示名单独取——切语言不该动到状态值。
+        var label: String {
+            self == .crop ? L.s.editor.modeCrop : L.s.editor.modeMosaic
+        }
     }
 
     private struct CropDrag {
@@ -116,15 +121,24 @@ struct EditorSheet: View {
     }
 
     private struct RatioPreset: Identifiable {
-        let id: String
+        let id: String              // 稳定标识,不随语言变
+        let label: String
         let ratio: Double?          // 像素比 w/h,nil = 自由
     }
-    private static let ratios: [RatioPreset] = [
-        .init(id: "自由", ratio: nil), .init(id: "1:1", ratio: 1),
-        .init(id: "4:3", ratio: 4 / 3), .init(id: "16:9", ratio: 16 / 9),
-        .init(id: "3:4", ratio: 3 / 4), .init(id: "9:16", ratio: 9 / 16),
-    ]
-    @State private var ratioID = "自由"
+    /// 写成计算属性而非 static let:自由比例的显示名要跟着当前语言走,
+    /// static let 只会在首次取用时定死一次。
+    private static var ratios: [RatioPreset] {
+        [
+            .init(id: freeRatioID, label: L.s.editor.ratioFree, ratio: nil),
+            .init(id: "1:1", label: "1:1", ratio: 1),
+            .init(id: "4:3", label: "4:3", ratio: 4 / 3),
+            .init(id: "16:9", label: "16:9", ratio: 16 / 9),
+            .init(id: "3:4", label: "3:4", ratio: 3 / 4),
+            .init(id: "9:16", label: "9:16", ratio: 9 / 16),
+        ]
+    }
+    private static let freeRatioID = "free"
+    @State private var ratioID = EditorSheet.freeRatioID
 
     var body: some View {
         VStack(spacing: 0) {
@@ -141,11 +155,11 @@ struct EditorSheet: View {
             await refreshPreview()
         }
         .onChange(of: mode) { _, _ in activeStroke = [] }
-        .confirmationDialog("放弃当前编辑？", isPresented: $showCancelConfirm) {
-            Button("放弃编辑", role: .destructive) { model.editTarget = nil }
-            Button("继续编辑", role: .cancel) {}
+        .confirmationDialog(L.s.editor.discardTitle, isPresented: $showCancelConfirm) {
+            Button(L.s.editor.discardConfirm, role: .destructive) { model.editTarget = nil }
+            Button(L.s.editor.keepEditing, role: .cancel) {}
         } message: {
-            Text("裁剪、涂抹和旋转都会丢失。")
+            Text(L.s.editor.discardMessage)
         }
     }
 
@@ -154,16 +168,18 @@ struct EditorSheet: View {
     private var toolbar: some View {
         HStack(spacing: 14) {
             Picker("", selection: $mode) {
-                ForEach(Mode.allCases, id: \.self) { Text($0.rawValue) }
+                ForEach(Mode.allCases, id: \.self) { Text($0.label) }
             }
             .pickerStyle(.segmented)
             .frame(width: 170)
 
             if mode == .crop {
-                Picker("比例", selection: $ratioID) {
-                    ForEach(Self.ratios) { Text($0.id).tag($0.id) }
+                Picker(L.s.editor.ratioLabel, selection: $ratioID) {
+                    ForEach(Self.ratios) { Text($0.label).tag($0.id) }
                 }
-                .frame(width: 130)
+                // 留给英文的 Ratio / Freeform:中文「比例」「自由」各两字,
+                // 按中文收紧宽度英文就会截成 Freefor…。
+                .frame(width: 160)
                 .onChange(of: ratioID) { _, id in
                     // 旋转按钮转置比例时只换显示,框已被 rotateSpecCW 转好,
                     // 重套一遍反而会用错基准。
@@ -175,22 +191,22 @@ struct EditorSheet: View {
                     let base = spec.crop ?? CGRect(x: 0, y: 0, width: 1, height: 1)
                     spec.crop = EditGeometry.applyRatio(base, pixelRatio: ratio, canvas: rotatedPixelSize)
                 }
-                Button("清除裁剪") { spec.crop = nil; ratioID = "自由" }
+                Button(L.s.editor.clearCrop) { spec.crop = nil; ratioID = Self.freeRatioID }
                     .controlSize(.small)
                     .disabled(spec.crop == nil)
             }
 
             if mode == .mosaic {
                 Picker("", selection: $spec.mosaicStyle) {
-                    Text("像素化").tag(MosaicStyle.pixelate)
-                    Text("纯色").tag(MosaicStyle.solid)
+                    Text(L.s.editor.mosaicPixelate).tag(MosaicStyle.pixelate)
+                    Text(L.s.editor.mosaicSolid).tag(MosaicStyle.solid)
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 140)
                 .onChange(of: spec.mosaicStyle) { _, _ in Task { await refreshPreview() } }
-                Text("笔刷").font(.caption).foregroundStyle(.secondary)
+                Text(L.s.editor.brush).font(.caption).foregroundStyle(.secondary)
                 Slider(value: $brush, in: 0.006...0.06).frame(width: 110)
-                Button("撤销一笔") {
+                Button(L.s.editor.undoStroke) {
                     _ = spec.strokes.popLast()
                     Task { await refreshPreview() }
                 }
@@ -207,14 +223,14 @@ struct EditorSheet: View {
                     ratioID = t
                 }
                 Task { await refreshPreview() }
-            } label: { Label("旋转", systemImage: "rotate.right") }
+            } label: { Label(L.s.editor.rotate, systemImage: "rotate.right") }
                 .controlSize(.small)
 
-            Toggle("水印", isOn: $wmOn)
+            Toggle(L.s.editor.watermark, isOn: $wmOn)
                 .toggleStyle(.checkbox)
                 .disabled(model.watermarkSpec() == nil)
                 .help(model.watermarkSpec() == nil
-                      ? "先在 设置 → 水印 里填好水印文字" : "按设置里的样式加水印")
+                      ? L.s.editor.watermarkNeedsText : L.s.editor.watermarkHelp)
 
             Spacer()
             if rendering { ProgressView().controlSize(.small) }
@@ -481,9 +497,9 @@ struct EditorSheet: View {
 
     private var bottomBar: some View {
         HStack(spacing: 10) {
-            Button("重置") {
+            Button(L.s.editor.reset) {
                 spec = EditSpec()
-                ratioID = "自由"
+                ratioID = Self.freeRatioID
                 wmOn = false
                 pendingStroke = []
                 activeStroke = []
@@ -492,14 +508,14 @@ struct EditorSheet: View {
             .disabled(!spec.hasEdits && !wmOn)
             Spacer()
             if mode == .mosaic {
-                Text("在需要遮盖的地方拖动涂抹").font(.caption).foregroundStyle(.tertiary)
+                Text(L.s.editor.mosaicHint).font(.caption).foregroundStyle(.tertiary)
             } else {
-                Text("拖出裁剪框，四角可调，框内拖动移动").font(.caption).foregroundStyle(.tertiary)
+                Text(L.s.editor.cropHint).font(.caption).foregroundStyle(.tertiary)
             }
             Spacer()
             // macOS 惯例:取消紧贴默认按钮居右。有编辑时取消先确认——
             // Esc 一键蒸发掉涂了半天的马赛克太残忍。
-            Button("取消") {
+            Button(L.s.editor.cancel) {
                 if spec.hasEdits {
                     showCancelConfirm = true
                 } else {
@@ -515,7 +531,7 @@ struct EditorSheet: View {
                 if model.editSubmitting {
                     ProgressView().controlSize(.small)
                 } else {
-                    Text("上传")
+                    Text(L.s.editor.upload)
                 }
             }
             .keyboardShortcut(.defaultAction)

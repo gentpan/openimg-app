@@ -43,7 +43,7 @@ struct OverviewView: View {
     // MARK: - Quota
 
     private var quotaCard: some View {
-        Card("空间", "internaldrive") {
+        Card(L.s.overview.quotaTitle, "internaldrive") {
             if let q = model.quota {
                 let used = q.quotaBytes > 0 ? Double(q.usedBytes) / Double(q.quotaBytes) : 0
                 VStack(alignment: .leading, spacing: 10) {
@@ -51,12 +51,12 @@ struct OverviewView: View {
                         Text(model.bytes(q.availableBytes))
                             .font(.system(size: 30, weight: .semibold, design: .rounded))
                             .foregroundStyle(Color.brand)
-                        Text("可用").foregroundStyle(.secondary)
+                        Text(L.s.overview.quotaAvailable).foregroundStyle(.secondary)
                         Spacer()
                         // Moved here from the settings page, which carried a
                         // second copy of this whole card. Settings is for
                         // things you can change; nothing in it was.
-                        Text("\(q.imageCount) 张")
+                        Text(L.s.common.imageCount(q.imageCount))
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     // A plain bar, not a gauge: this is one number against one
@@ -72,9 +72,9 @@ struct OverviewView: View {
                     }
                     .frame(height: 8)
                     HStack {
-                        Text("已用 \(model.bytes(q.usedBytes))")
+                        Text(L.s.overview.quotaUsed(model.bytes(q.usedBytes)))
                         Spacer()
-                        Text("总量 \(model.bytes(q.quotaBytes))")
+                        Text(L.s.overview.quotaTotal(model.bytes(q.quotaBytes)))
                     }
                     .font(.caption).foregroundStyle(.secondary)
                 }
@@ -87,23 +87,23 @@ struct OverviewView: View {
     // MARK: - Storage composition
 
     private var compositionCard: some View {
-        Card("存储构成", "chart.pie") {
+        Card(L.s.overview.compositionTitle, "chart.pie") {
             if let s = model.summary {
                 // Distinct hues, not four opacities of one. Shades of the same
                 // colour force the reader back to the legend for every slice;
                 // and with 86 / 13 / 2 the two small ones were near-identical
                 // slivers of purple that nothing distinguished.
                 let parts = [
-                    ("主图", s.sizePrimary, Color.brand),
-                    ("衍生图", s.sizeVariants, Color(red: 0.20, green: 0.74, blue: 0.80)),
-                    ("缩略图", s.sizeThumbs, Color(red: 0.98, green: 0.72, blue: 0.25)),
-                    ("未分类", s.sizeUnclassified, Color.white.opacity(0.28)),
+                    (L.s.overview.partPrimary, s.sizePrimary, Color.brand),
+                    (L.s.overview.partVariants, s.sizeVariants, Color(red: 0.20, green: 0.74, blue: 0.80)),
+                    (L.s.overview.partThumbs, s.sizeThumbs, Color(red: 0.98, green: 0.72, blue: 0.25)),
+                    (L.s.overview.partUnclassified, s.sizeUnclassified, Color.white.opacity(0.28)),
                 ].filter { $0.1 > 0 }
 
                 VStack(alignment: .leading, spacing: 12) {
                     Chart(parts, id: \.0) { part in
                         SectorMark(
-                            angle: .value("占用", part.1),
+                            angle: .value(L.s.overview.chartSizeLabel, part.1),
                             innerRadius: .ratio(0.62),
                             angularInset: 1.5
                         )
@@ -116,7 +116,8 @@ struct OverviewView: View {
                         VStack(spacing: 0) {
                             Text(model.bytes(s.sizeStored))
                                 .font(.callout.weight(.semibold))
-                            Text("\(s.images) 张").font(.caption2).foregroundStyle(.secondary)
+                            Text(L.s.common.imageCount(s.images))
+                                .font(.caption2).foregroundStyle(.secondary)
                         }
                     }
 
@@ -141,8 +142,8 @@ struct OverviewView: View {
                             Image(systemName: delta <= 0 ? "arrow.down.circle.fill" : "arrow.up.circle.fill")
                                 .foregroundStyle(delta <= 0 ? .green : .orange)
                             Text(delta <= 0
-                                 ? "比原始文件省了 \(model.bytes(s.sizeOrig - s.sizeStored))"
-                                 : "比原始文件多用 \(model.bytes(s.sizeStored - s.sizeOrig))")
+                                 ? L.s.overview.savedVsOriginal(model.bytes(s.sizeOrig - s.sizeStored))
+                                 : L.s.overview.largerThanOriginal(model.bytes(s.sizeStored - s.sizeOrig)))
                             Spacer()
                             Text(String(format: "%+.0f%%", delta * 100)).monospacedDigit()
                         }
@@ -159,12 +160,12 @@ struct OverviewView: View {
     // MARK: - Formats
 
     private var formatCard: some View {
-        Card("格式分布", "doc.on.doc") {
+        Card(L.s.overview.formatsTitle, "doc.on.doc") {
             if let s = model.summary, !s.byFormat.isEmpty {
                 Chart(Array(s.byFormat.enumerated()), id: \.element.id) { i, f in
                     BarMark(
-                        x: .value("占用", f.bytes),
-                        y: .value("格式", f.ext.uppercased())
+                        x: .value(L.s.overview.chartSizeLabel, f.bytes),
+                        y: .value(L.s.overview.chartFormatLabel, f.ext.uppercased())
                     )
                     .foregroundStyle(Self.formatPalette[i % Self.formatPalette.count])
                     .cornerRadius(4)
@@ -187,7 +188,7 @@ struct OverviewView: View {
     // MARK: - Check-in
 
     private var checkinCard: some View {
-        Card("签到", "flame.fill") {
+        Card(L.s.overview.checkinTitle, "flame.fill") {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .center, spacing: 12) {
                     Image(systemName: "flame.fill")
@@ -197,15 +198,16 @@ struct OverviewView: View {
                         .background(Circle().fill(.orange.opacity(0.15)))
                         .shadow(color: .orange.opacity(0.35), radius: 8)
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("连续签到").font(.caption).foregroundStyle(.secondary)
+                        Text(L.s.overview.streakLabel).font(.caption).foregroundStyle(.secondary)
                         HStack(alignment: .firstTextBaseline, spacing: 4) {
                             Text("\(model.streak)")
                                 .font(.system(size: 26, weight: .semibold, design: .rounded))
-                            Text("天").font(.callout).foregroundStyle(.secondary)
+                            Text(L.s.overview.streakUnit(model.streak))
+                                .font(.callout).foregroundStyle(.secondary)
                         }
                     }
                     Spacer()
-                    Button(model.checkedInToday ? "今天已签到" : "签到") {
+                    Button(model.checkedInToday ? L.s.overview.checkedInToday : L.s.overview.checkinAction) {
                         Task { await model.checkin() }
                     }
                     .buttonStyle(model.checkedInToday ? AnyButtonStyle(QuietButton())
@@ -217,7 +219,7 @@ struct OverviewView: View {
 
                 WeekStrip(days: model.thisWeek)
                 MilestoneBar(
-                    title: "本月进度",
+                    title: L.s.overview.monthProgressTitle,
                     current: model.monthProgress.done,
                     total: model.monthProgress.total,
                     reward: model.quota?.checkin?.monthBonus ?? 0,
@@ -230,7 +232,7 @@ struct OverviewView: View {
     // MARK: - Ledger
 
     private var ledgerCard: some View {
-        Card("空间流水", "list.bullet.rectangle") {
+        Card(L.s.overview.ledgerTitle, "list.bullet.rectangle") {
             if model.transactions.isEmpty {
                 placeholder
             } else {
@@ -241,7 +243,9 @@ struct OverviewView: View {
                                 .foregroundStyle(t.isGrant ? Color.brand : Color.secondary)
                                 .font(.caption)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(t.label).font(.caption)
+                                // 不用 QuotaTransaction.label:它写死在共享的
+                                // Models.swift 里,只有中文一份。
+                                Text(L.s.overview.txLabel(t.type)).font(.caption)
                                 Text(t.reason)
                                     .font(.caption2).foregroundStyle(.tertiary)
                                     .lineLimit(1).truncationMode(.middle)
@@ -265,7 +269,7 @@ struct OverviewView: View {
         HStack {
             Spacer()
             if model.statsLoading { ProgressView().controlSize(.small) }
-            else { Text("暂无数据").font(.caption).foregroundStyle(.tertiary) }
+            else { Text(L.s.overview.emptyState).font(.caption).foregroundStyle(.tertiary) }
             Spacer()
         }
         .frame(height: 90)

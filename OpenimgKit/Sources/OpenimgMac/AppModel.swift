@@ -8,14 +8,8 @@ import OpenimgKit
 enum Section_: String, CaseIterable, Identifiable, Hashable {
     case overview, gallery, upload, settings
     var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .overview: "概览"
-        case .gallery: "图库"
-        case .upload: "上传"
-        case .settings: "设置"
-        }
-    }
+    /// 显示名归 nav 分区管——侧栏、顶栏、这里都取同一份,不各写各的。
+    var label: String { L.s.nav.section(self) }
     var icon: String {
         switch self {
         case .overview: "chart.bar.doc.horizontal"
@@ -62,6 +56,26 @@ final class AppModel: ObservableObject {
     @Published var useToken = false
     @Published var account: Account?
     @Published var quota: Quota?
+
+    // 外观:界面语言。改它要重建整个视图树——文案取自 L.s 这个静态量,
+    // 而非每个视图观察的属性,单靠 objectWillChange 只会刷新恰好在读
+    // model 的那些视图。langEpoch 挂在根视图的 .id 上,变一次整树重建。
+    @Published var lang: AppLang = AppLang.current {
+        didSet {
+            AppLang.current = lang
+            UserDefaults.standard.set(lang.rawValue, forKey: "appLang")
+            langEpoch &+= 1
+        }
+    }
+    @Published var langEpoch = 0
+
+    // 外观:品牌色相(与网站 data-brand 同一套)
+    @Published var brandTint: BrandTint = BrandTint.current {
+        didSet {
+            BrandTint.current = brandTint
+            UserDefaults.standard.set(brandTint.rawValue, forKey: "brandTint")
+        }
+    }
 
     // Navigation
     @Published var section: Section_ = .gallery
@@ -292,7 +306,7 @@ final class AppModel: ObservableObject {
             // connect" for a session that works perfectly.
             var warning = ""
             do { try store.save(token, server: server) } catch {
-                warning = "（令牌未能保存，下次启动需重新填写）"
+                warning = L.s.errors.tokenNotSaved
             }
 
             account = me
@@ -304,7 +318,7 @@ final class AppModel: ObservableObject {
             await loadStats()
             watchSetup()
             if !quiet {
-                announce("已连接 \(me.email)\(warning)")
+                announce(L.s.errors.connected(me.email, warning))
                 section = .overview
             }
         } catch {
@@ -357,9 +371,14 @@ final class AppModel: ObservableObject {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         cal.firstWeekday = 2
+        cal.locale = L.locale
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = cal.timeZone
+
+        // 星期缩写交给 Locale:中文得「一…日」,英文得「M…S」,不必自己维护
+        // 两份表。符号表从周日排起,而这一周从周一算,所以取值时挪一位。
+        let weekdays = cal.veryShortStandaloneWeekdaySymbols
 
         let now = Date()
         let today = f.string(from: now)
@@ -371,7 +390,7 @@ final class AppModel: ObservableObject {
             let key = f.string(from: day)
             return CheckinDay(
                 id: key,
-                label: ["一", "二", "三", "四", "五", "六", "日"][i],
+                label: weekdays[(i + 1) % 7],
                 claimed: claimed.contains(key),
                 isToday: key == today,
                 future: key > today
@@ -407,8 +426,8 @@ final class AppModel: ObservableObject {
         do {
             let r = try await client().checkin()
             announce(r.capped
-                ? "签到成功，但空间已达上限，本次未发放"
-                : "签到成功，+\(Self.bytes(r.grantedBytes))，连续 \(r.streak) 天")
+                ? L.s.errors.checkinCapped
+                : L.s.errors.checkinDone(Self.bytes(r.grantedBytes), r.streak))
             quota = try? await client().quota()
             await loadStats()
         } catch {
@@ -511,11 +530,11 @@ final class AppModel: ObservableObject {
 
         let freed = images.filter { selection.contains($0.id) }.reduce(Int64(0)) { $0 + $1.sizeStored }
         let alert = NSAlert()
-        alert.messageText = "删除 \(ids.count) 张图片？"
-        alert.informativeText = "对象会被清除，占用的 \(Self.bytes(freed)) 退还到你的空间。此操作不可撤销。"
+        alert.messageText = L.s.errors.deleteTitle(ids.count)
+        alert.informativeText = L.s.errors.deleteBody(ids.count, Self.bytes(freed))
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "删除")
-        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: L.s.errors.deleteConfirm)
+        alert.addButton(withTitle: L.s.errors.deleteCancel)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
         busy = true
@@ -527,7 +546,7 @@ final class AppModel: ObservableObject {
                 let chunk = Array(ids[start..<min(start + 500, ids.count)])
                 deleted += try await client().bulkDelete(ids: chunk).deleted
             }
-            announce("已删除 \(deleted) 张")
+            announce(L.s.errors.deleted(deleted))
             detail = nil
             quota = try? await client().quota()
             await load()
@@ -550,7 +569,7 @@ final class AppModel: ObservableObject {
         // making the user open it and select-all first is busywork.
         panel.canChooseDirectories = true
         panel.allowedContentTypes = [.image, .folder]
-        panel.message = "选择图片或文件夹"
+        panel.message = L.s.errors.pickImages
         guard panel.runModal() == .OK else { return }
         await upload(expand(panel.urls))
     }
@@ -670,7 +689,7 @@ final class AppModel: ObservableObject {
                 // the batch, so mark them rather than retrying into the wall.
                 for rest in items[(idx + 1)...] {
                     if let k = row(rest.id), queue[k].state == .queued {
-                        queue[k].state = .failed("已取消")
+                        queue[k].state = .failed(L.s.errors.cancelled)
                     }
                 }
                 announce(message(error))
@@ -679,7 +698,7 @@ final class AppModel: ObservableObject {
         }
         if done > 0 {
             copy(lastLink)
-            announce(done == 1 ? "已上传，链接已复制" : "已上传 \(done) 张，最后一条链接已复制")
+            announce(done == 1 ? L.s.errors.uploadedOne : L.s.errors.uploadedMany(done))
             quota = try? await client().quota()
             await load(resetPage: true)
         }
@@ -756,7 +775,7 @@ final class AppModel: ObservableObject {
                 codeCooldown = sent.resendIn
             }
             startCooldownTicker()
-            announce("验证码已发到 \(sent.email)")
+            announce(L.s.errors.codeSentTo(sent.email))
         } catch {
             announce(message(error))
         }
@@ -768,7 +787,7 @@ final class AppModel: ObservableObject {
         do {
             try await client().changePassword(code: code, newPassword: newPassword)
             codeSent = false
-            announce("密码已修改")
+            announce(L.s.errors.passwordChanged)
             return true
         } catch {
             announce(message(error))
@@ -780,7 +799,7 @@ final class AppModel: ObservableObject {
         do {
             try await client().deletePasskey(id: p.id)
             await loadPasskeys()
-            announce("已删除 \(p.name)")
+            announce(L.s.errors.passkeyRemoved(p.name))
         } catch {
             announce(message(error))
         }
@@ -790,7 +809,7 @@ final class AppModel: ObservableObject {
         do {
             try await client().unlink(provider: provider)
             account = try await client().me()
-            announce("已解除绑定")
+            announce(L.s.errors.unlinked)
         } catch {
             announce(message(error))
         }
@@ -809,7 +828,7 @@ final class AppModel: ObservableObject {
         do {
             let saved = try await client().updateProfile(name: name)
             account = try await client().me()
-            announce(saved.isEmpty ? "已清除昵称" : "昵称已改为 \(saved)")
+            announce(saved.isEmpty ? L.s.errors.nicknameCleared : L.s.errors.nicknameChanged(saved))
         } catch {
             announce(message(error))
         }
@@ -819,7 +838,7 @@ final class AppModel: ObservableObject {
         let p = NSOpenPanel()
         p.allowedContentTypes = [.image]
         p.allowsMultipleSelection = false
-        p.message = "选择一张图片作为头像"
+        p.message = L.s.errors.pickAvatar
         guard p.runModal() == .OK, let url = p.url else { return }
         await setAvatar(url)
     }
@@ -828,7 +847,7 @@ final class AppModel: ObservableObject {
         // 服务器上限 8 MB(最终会压成 256px AVIF),本地先拦免得白传一趟
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         if size > 8 << 20 {
-            announce("头像图片超过 8 MB，请换小一点的")
+            announce(L.s.errors.avatarTooLarge)
             return
         }
         busy = true
@@ -836,7 +855,7 @@ final class AppModel: ObservableObject {
         do {
             _ = try await client().uploadAvatar(fileURL: url)
             account = try await client().me()
-            announce("头像已更新")
+            announce(L.s.errors.avatarUpdated)
         } catch {
             announce(message(error))
         }
@@ -848,7 +867,7 @@ final class AppModel: ObservableObject {
         do {
             try await client().deleteAvatar()
             account = try await client().me()
-            announce("已移除头像")
+            announce(L.s.errors.avatarRemoved)
         } catch {
             announce(message(error))
         }
@@ -863,7 +882,7 @@ final class AppModel: ObservableObject {
         guard let tier = quota?.tier else { return nil }
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         if tier.maxFileSize > 0, Int64(size) > tier.maxFileSize {
-            return "超过单文件上限 \(Self.bytes(tier.maxFileSize))"
+            return L.s.errors.fileTooLarge(Self.bytes(tier.maxFileSize))
         }
         let ext = url.pathExtension.lowercased()
         // 与服务端 CanonFormat 同一套折叠:jpe/tif 少了会被本地误拒,而服务
@@ -875,7 +894,7 @@ final class AppModel: ObservableObject {
         default: ext
         }
         if !tier.allowedFormats.isEmpty, !tier.allowedFormats.contains(canon) {
-            return "你的用户组不支持 \(ext.uppercased())"
+            return L.s.errors.formatNotAllowed(ext.uppercased())
         }
         return nil
     }

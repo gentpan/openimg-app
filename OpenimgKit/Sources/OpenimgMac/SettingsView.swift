@@ -31,6 +31,7 @@ struct SettingsView: View {
             HStack(alignment: .top, spacing: 16) {
                 VStack(spacing: 16) {
                     profileCard
+                    appearanceCard
                     securityCard
                     dangerCard
                 }
@@ -60,7 +61,7 @@ struct SettingsView: View {
     /// have 401'd. They now sit alongside the other things a token may do to
     /// its own account — see the note in router.go for where that line is.
     private var profileCard: some View {
-        SettingsCard("个人资料", "person.crop.circle") {
+        SettingsCard(L.s.settings.profile, "person.crop.circle") {
             if let a = model.account {
                 HStack(alignment: .top, spacing: 14) {
                     avatarWell(a)
@@ -107,7 +108,7 @@ struct SettingsView: View {
             .buttonStyle(.plain)
             .onHover { avatarHover = $0 }
             .animation(.easeOut(duration: 0.12), value: avatarHover || avatarDropping)
-            .help("点击或拖入图片更换头像")
+            .help(L.s.settings.avatarHelp)
             .onDrop(of: [.fileURL], isTargeted: $avatarDropping) { providers in
                 Task {
                     if let url = await Self.firstFileURL(from: providers) {
@@ -117,11 +118,11 @@ struct SettingsView: View {
                 return true
             }
             HStack(spacing: 4) {
-                Button("更换") { Task { await model.pickAvatar() } }
+                Button(L.s.settings.change) { Task { await model.pickAvatar() } }
                     .buttonStyle(LinkButton()).font(.caption)
                 if a.avatarURL?.isEmpty == false {
                     Text("·").font(.caption).foregroundStyle(.quaternary)
-                    Button("移除") { Task { await model.removeAvatar() } }
+                    Button(L.s.settings.remove) { Task { await model.removeAvatar() } }
                         .buttonStyle(LinkButton()).font(.caption)
                 }
             }
@@ -150,7 +151,7 @@ struct SettingsView: View {
     /// A save button for one short string is a button people forget to press;
     /// blur-to-save is what the website does, so the two agree.
     private func nameField(_ a: Account) -> some View {
-        TextField("昵称", text: Binding(
+        TextField(L.s.settings.nickname, text: Binding(
             get: { draftName ?? a.name },
             set: { draftName = $0 }
         ))
@@ -194,7 +195,7 @@ struct SettingsView: View {
     /// change it. The numbers come from /api/storage/summary, which the token
     /// can already reach.
     private var locationCard: some View {
-        SettingsCard("存储位置", "externaldrive.connected.to.line.below") {
+        SettingsCard(L.s.settings.location, "externaldrive.connected.to.line.below") {
             if let profiles = model.summary?.byProfile, !profiles.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(Array(profiles.enumerated()), id: \.element.id) { i, p in
@@ -216,20 +217,20 @@ struct SettingsView: View {
                             Spacer()
                             VStack(alignment: .trailing, spacing: 1) {
                                 Text(model.bytes(p.bytes)).font(.callout.monospacedDigit())
-                                Text("\(p.images) 张")
+                                Text(L.s.settings.imageCount(p.images))
                                     .font(.caption2).foregroundStyle(.tertiary)
                             }
                         }
                         .padding(.vertical, 9)
                     }
                 }
-                Text("新增或修改存储位置需要填写密钥，见下方「在网站上管理」")
+                Text(L.s.settings.locationKeyNote)
                     .font(.caption2).foregroundStyle(.tertiary)
                     .padding(.top, 8)
             } else if model.statsLoading {
                 ProgressView().controlSize(.small).frame(maxWidth: .infinity)
             } else {
-                Text("还没有图片，看不出存的位置")
+                Text(L.s.settings.locationEmpty)
                     .font(.callout).foregroundStyle(.secondary)
             }
         }
@@ -237,8 +238,8 @@ struct SettingsView: View {
 
     private func kindLabel(_ kind: String) -> String? {
         switch kind {
-        case "platform": "平台存储池"
-        case "s3", "r2": kind.uppercased() + " · 自有存储桶"
+        case "platform": L.s.settings.kindPlatform
+        case "s3", "r2": L.s.settings.kindOwnBucket(kind.uppercased())
         default: kind.isEmpty ? nil : kind
         }
     }
@@ -246,21 +247,25 @@ struct SettingsView: View {
     /// The same three values the upload page offers. Both write to the account,
     /// so whichever one the user reaches for, the website agrees.
     private var conversionCard: some View {
-        SettingsCard("图片处理", "wand.and.stars") {
+        SettingsCard(L.s.settings.processing, "wand.and.stars") {
             VStack(alignment: .leading, spacing: 14) {
-                setting("处理方式", model.uploadMode.detail) {
-                    PillRow(items: UploadMode.allCases, label: \.label, selection: pref($model.uploadMode))
+                setting(L.s.settings.mode, L.s.settings.modeDetail(model.uploadMode)) {
+                    PillRow(items: UploadMode.allCases,
+                            label: { L.s.settings.modeLabel($0) },
+                            selection: pref($model.uploadMode))
                 }
-                setting("上传自动转换",
+                setting(L.s.settings.autoConvert,
                         model.uploadMode == .original
-                        ? "原图模式下不转换" : "选定后上传直接转成该格式存储，不保留原格式；动图除外") {
-                    PillRow(items: VariantFormat.allCases, label: \.label, selection: pref($model.variantFormat))
+                        ? L.s.settings.autoConvertOff : L.s.settings.autoConvertHint) {
+                    PillRow(items: VariantFormat.allCases,
+                            label: { L.s.settings.variantLabel($0) },
+                            selection: pref($model.variantFormat))
                         .disabled(model.uploadMode == .original)
                         .opacity(model.uploadMode == .original ? 0.45 : 1)
                 }
-                setting("最大宽度",
+                setting(L.s.settings.maxWidth,
                         model.uploadMode == .original
-                        ? "保留原图时不缩放" : "超过就等比缩小，只影响之后上传的图片") {
+                        ? L.s.settings.maxWidthOff : L.s.settings.maxWidthHint) {
                     PillRow(items: allowedMaxWidths.map(UploadView.Width.init),
                             label: \.label, selection: widthPref)
                         // Original mode ships the bytes untouched, so a width
@@ -277,11 +282,13 @@ struct SettingsView: View {
                     // they read as the constraint they are.
                     VStack(spacing: 0) {
                         Divider().overlay(Color.white.opacity(0.06))
-                        row("单文件上限", model.bytes(t.maxFileSize))
+                        row(L.s.settings.maxFileSize, model.bytes(t.maxFileSize))
                         Divider().overlay(Color.white.opacity(0.06))
-                        row("每日上传", t.dailyUploadCount > 0 ? "\(t.dailyUploadCount) 张" : "不限")
+                        row(L.s.settings.dailyUpload,
+                            t.dailyUploadCount > 0
+                            ? L.s.settings.imageCount(t.dailyUploadCount) : L.s.settings.unlimited)
                         Divider().overlay(Color.white.opacity(0.06))
-                        row("支持格式", t.allowedFormats.joined(separator: " · ").uppercased())
+                        row(L.s.settings.formats, t.allowedFormats.joined(separator: " · ").uppercased())
                     }
                     .padding(.top, 2)
                 }
@@ -292,13 +299,13 @@ struct SettingsView: View {
     /// 目录监控自动上传。只增不删:本地删除不动云端,云端删除不回头删本地
     /// ——这是自动上传,不是同步,卡片文案也照这个口径写。
     private var watchCard: some View {
-        SettingsCard("自动上传目录", "folder.badge.plus") {
+        SettingsCard(L.s.settings.watchFolders, "folder.badge.plus") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Toggle(isOn: Binding(
                         get: { model.watchEnabled },
                         set: { model.watchSetEnabled($0) }
-                    )) { Text("监控以下目录，图片自动上传").font(.callout) }
+                    )) { Text(L.s.settings.watchToggle).font(.callout) }
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     Spacer()
@@ -308,9 +315,9 @@ struct SettingsView: View {
                 if let reason = model.watchPausedReason {
                     HStack(spacing: 8) {
                         Image(systemName: "pause.circle.fill").foregroundStyle(.orange)
-                        Text("已暂停：\(reason)").font(.caption).foregroundStyle(.orange)
+                        Text(L.s.settings.watchPaused(reason)).font(.caption).foregroundStyle(.orange)
                         Spacer()
-                        Button("继续") { model.watchResume() }
+                        Button(L.s.settings.resume) { model.watchResume() }
                             .buttonStyle(QuietButton())
                     }
                 } else if !model.watchStatus.isEmpty {
@@ -335,7 +342,7 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
-                        .help("移除此目录（已上传的图片与记录不受影响）")
+                        .help(L.s.settings.removeFolderHelp)
                     }
                     .padding(.vertical, 2)
                 }
@@ -346,27 +353,101 @@ struct SettingsView: View {
                         panel.canChooseFiles = false
                         panel.canChooseDirectories = true
                         panel.allowsMultipleSelection = false
-                        panel.prompt = "选择目录"
+                        panel.prompt = L.s.settings.chooseFolderPrompt
                         if panel.runModal() == .OK, let url = panel.url {
                             model.watchAddFolder(url.path)
                         }
                     } label: {
-                        Label("添加目录…", systemImage: "plus")
+                        Label(L.s.settings.addFolder, systemImage: "plus")
                     }
                     .buttonStyle(QuietButton())
 
                     if model.watchEnabled, !model.watchFolders.isEmpty,
                        model.watchPausedReason == nil {
-                        Button("立即扫描") { model.watchScanFresh() }
+                        Button(L.s.settings.scanNow) { model.watchScanFresh() }
                             .buttonStyle(QuietButton())
                             .disabled(model.watchBusy)
                     }
                     Spacer()
                 }
 
-                Text("首次启用会上传目录内的全部现有图片（含子目录）。已上传的文件记录在本地清单，改名、移动或重启不会重复占用配额。配额不足、到每日上限或令牌失效会自动暂停（每日上限次日自动继续）。只上传，不会删除任何一端的文件。")
+                Text(L.s.settings.watchNote)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    /// 外观。产品固定深色,可切的只有品牌色相——与网站 data-brand 同一套
+    /// 取值,两端观感一致。
+    /// 外观。产品固定深色,可切的只有界面语言与品牌色相——两者都与网站
+    /// 同一套取值,两端观感一致。
+    private var appearanceCard: some View {
+        SettingsCard(L.s.settings.appearance, "paintpalette") {
+            VStack(alignment: .leading, spacing: 14) {
+                pickerRow(L.s.settings.language, L.s.settings.languageHint,
+                          items: AppLang.allCases,
+                          isOn: { $0 == model.lang },
+                          tint: { _ in Color.brand },
+                          select: { model.lang = $0 }) { lang in
+                    Text(lang.label).font(.callout)
+                }
+
+                Divider().overlay(Color.white.opacity(0.06))
+
+                pickerRow(L.s.settings.brandColor, L.s.settings.brandColorHint,
+                          items: BrandTint.allCases,
+                          isOn: { $0 == model.brandTint },
+                          tint: { $0.accent },
+                          select: { model.brandTint = $0 }) { tint in
+                    HStack(spacing: 7) {
+                        Circle()
+                            .fill(tint.accent)
+                            .frame(width: 13, height: 13)
+                            .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.8))
+                        Text(L.s.settings.tintName(tint)).font(.callout)
+                    }
+                }
+            }
+        }
+    }
+
+    /// 一行标题 + 一排互斥按钮。语言与品牌色是同一种控件,写两遍只会让它们
+    /// 慢慢长歪。
+    private func pickerRow<T: Hashable, C: View>(
+        _ title: String, _ hint: String,
+        items: [T],
+        isOn: @escaping (T) -> Bool,
+        tint: @escaping (T) -> Color,
+        select: @escaping (T) -> Void,
+        @ViewBuilder label: @escaping (T) -> C
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).font(.callout)
+                Spacer()
+                Text(hint).font(.caption2).foregroundStyle(.tertiary)
+            }
+            HStack(spacing: 8) {
+                ForEach(items, id: \.self) { item in
+                    let on = isOn(item)
+                    Button { select(item) } label: {
+                        label(item)
+                            .padding(.horizontal, 13)
+                            .frame(height: Metrics.control)
+                            .background(
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .fill(.white.opacity(on ? 0.12 : 0.05))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .strokeBorder(on ? tint(item).opacity(0.65) : .white.opacity(0.09),
+                                                  lineWidth: on ? 1.4 : 0.8)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
             }
         }
     }
@@ -374,10 +455,10 @@ struct SettingsView: View {
     /// 水印:本机合成后上传,不上服务器,所以是应用偏好而非账号偏好。
     /// 编辑器里按需开关;对监控目录可选自动应用。
     private var watermarkCard: some View {
-        SettingsCard("水印", "signature") {
+        SettingsCard(L.s.settings.watermark, "signature") {
             VStack(alignment: .leading, spacing: 12) {
                 Field(icon: "signature") {
-                    TextField("水印文字（留空即不启用）", text: Binding(
+                    TextField(L.s.settings.watermarkTextField, text: Binding(
                         get: { model.wmText },
                         set: { model.wmText = $0; model.saveWatermarkPrefs() }
                     ))
@@ -385,7 +466,7 @@ struct SettingsView: View {
 
                 HStack(alignment: .top, spacing: 18) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("位置").font(.caption).foregroundStyle(.secondary)
+                        Text(L.s.settings.position).font(.caption).foregroundStyle(.secondary)
                         // 九宫格:所见即所得的位置选择,比下拉菜单直观。
                         Grid(horizontalSpacing: 3, verticalSpacing: 3) {
                             ForEach(0..<3, id: \.self) { row in
@@ -404,7 +485,7 @@ struct SettingsView: View {
                                         }
                                         .buttonStyle(.plain)
                                         .help(name)
-                                        .accessibilityLabel("水印位置：\(name)")
+                                        .accessibilityLabel(L.s.settings.positionLabel(name))
                                     }
                                 }
                             }
@@ -412,7 +493,7 @@ struct SettingsView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("透明度 \(Int(model.wmOpacity * 100))%")
+                        Text(L.s.settings.opacity(Int(model.wmOpacity * 100)))
                             .font(.caption).foregroundStyle(.secondary)
                         Slider(value: Binding(
                             get: { model.wmOpacity },
@@ -422,21 +503,21 @@ struct SettingsView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("大小").font(.caption).foregroundStyle(.secondary)
+                        Text(L.s.settings.size).font(.caption).foregroundStyle(.secondary)
                         Picker("", selection: Binding(
                             get: { model.wmScale },
                             set: { model.wmScale = $0; model.saveWatermarkPrefs() }
                         )) {
-                            Text("小").tag(0.02)
-                            Text("中").tag(0.03)
-                            Text("大").tag(0.045)
+                            Text(L.s.settings.sizeSmall).tag(0.02)
+                            Text(L.s.settings.sizeMedium).tag(0.03)
+                            Text(L.s.settings.sizeLarge).tag(0.045)
                         }
                         .pickerStyle(.segmented)
                         .frame(width: 120)
                     }
                 }
 
-                Toggle("对监控目录上传的图片自动加水印", isOn: Binding(
+                Toggle(L.s.settings.autoWatermarkWatch, isOn: Binding(
                     get: { model.wmAutoWatch },
                     set: { model.wmAutoWatch = $0; model.saveWatermarkPrefs() }
                 ))
@@ -444,7 +525,7 @@ struct SettingsView: View {
                 .font(.caption)
                 .disabled(model.watermarkSpec() == nil)
 
-                Text("水印在本机合成后上传。手动上传时在编辑器里按需勾选；原图模式下监控上传不加水印（字节原样是该模式的承诺），动图也不加（逐帧合成不支持）。")
+                Text(L.s.settings.watermarkNote)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -452,9 +533,7 @@ struct SettingsView: View {
     }
 
     /// 九宫格锚点的可读名,行优先与 WatermarkSpec.anchor 对齐。
-    private static let anchorNames = [
-        "左上", "上中", "右上", "左中", "居中", "右中", "左下", "下中", "右下",
-    ]
+    private static var anchorNames: [String] { L.s.settings.anchorNames }
 
     private func setting<C: View>(_ title: String, _ hint: String,
                                   @ViewBuilder control: () -> C) -> some View {
@@ -492,7 +571,7 @@ struct SettingsView: View {
     /// this app's web session is ephemeral, so the callback would have nothing
     /// to attach the link to.
     private var securityCard: some View {
-        SettingsCard("登录与安全", "lock.shield") {
+        SettingsCard(L.s.settings.security, "lock.shield") {
             VStack(alignment: .leading, spacing: 16) {
                 passwordSection
                 Divider().overlay(Color.white.opacity(0.06))
@@ -513,34 +592,36 @@ struct SettingsView: View {
 
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(hasPassword ? "修改密码" : "设置密码").font(.callout)
+                Text(hasPassword ? L.s.settings.changePassword : L.s.settings.setPassword)
+                    .font(.callout)
                 Spacer()
-                Text(model.codeSent ? "验证码 5 分钟内有效" : "验证码会发到你的邮箱")
+                Text(model.codeSent ? L.s.settings.codeValidHint : L.s.settings.codeWillSendHint)
                     .font(.caption2).foregroundStyle(.tertiary)
             }
             if model.codeSent {
                 if !model.codeSentTo.isEmpty {
-                    Text("验证码已发到 \(model.codeSentTo)")
+                    Text(L.s.settings.codeSentTo(model.codeSentTo))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 Field(icon: "number") {
-                    TextField("6 位验证码", text: $code)
+                    TextField(L.s.settings.codeField, text: $code)
                 }
                 .frame(maxWidth: 240)
                 Field(icon: "lock") {
-                    SecureField(hasPassword ? "新密码（至少 8 位）" : "密码（至少 8 位）",
+                    SecureField(hasPassword
+                                ? L.s.settings.newPasswordField : L.s.settings.passwordField,
                                 text: $newPassword)
                 }
                 Field(icon: "lock.rotation") {
-                    SecureField("再输入一次", text: $newPassword2)
+                    SecureField(L.s.settings.repeatPasswordField, text: $newPassword2)
                 }
                 if tooShort {
-                    Text("密码至少 8 位").font(.caption2).foregroundStyle(.orange)
+                    Text(L.s.settings.passwordTooShort).font(.caption2).foregroundStyle(.orange)
                 } else if mismatch {
-                    Text("两次输入不一致").font(.caption2).foregroundStyle(.orange)
+                    Text(L.s.settings.passwordMismatch).font(.caption2).foregroundStyle(.orange)
                 }
                 HStack(spacing: 8) {
-                    Button(hasPassword ? "确认修改" : "确认设置") {
+                    Button(hasPassword ? L.s.settings.confirmChange : L.s.settings.confirmSet) {
                         Task {
                             if await model.changePassword(code: code, newPassword: newPassword) {
                                 code = ""; newPassword = ""; newPassword2 = ""
@@ -550,19 +631,20 @@ struct SettingsView: View {
                     .buttonStyle(BrandButton())
                     .disabled(!ready || model.busy)
 
-                    Button(model.codeCooldown > 0 ? "重发 (\(model.codeCooldown)s)" : "重发验证码") {
+                    Button(model.codeCooldown > 0
+                           ? L.s.settings.resendIn(model.codeCooldown) : L.s.settings.resendCode) {
                         Task { await model.sendCode(.password) }
                     }
                     .buttonStyle(QuietButton())
                     .disabled(model.codeCooldown > 0 || model.busy)
 
-                    Button("取消") {
+                    Button(L.s.settings.cancel) {
                         model.codeSent = false; code = ""; newPassword = ""; newPassword2 = ""
                     }
                     .buttonStyle(LinkButton()).font(.caption)
                 }
             } else {
-                Button(hasPassword ? "修改密码" : "设置密码") {
+                Button(hasPassword ? L.s.settings.changePassword : L.s.settings.setPassword) {
                     Task { await model.sendCode(.password) }
                 }
                 .buttonStyle(QuietButton())
@@ -577,11 +659,11 @@ struct SettingsView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("Passkey").font(.callout)
                 Spacer()
-                Text("免密码登录，用触控 ID 或手机确认")
+                Text(L.s.settings.passkeyHint)
                     .font(.caption2).foregroundStyle(.tertiary)
             }
             if model.passkeys.isEmpty {
-                Text("还没有添加 Passkey").font(.caption).foregroundStyle(.secondary)
+                Text(L.s.settings.noPasskeys).font(.caption).foregroundStyle(.secondary)
             } else {
                 VStack(spacing: 0) {
                     ForEach(model.passkeys) { p in
@@ -596,15 +678,15 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(p.name).font(.callout)
                                 if let d = p.lastUsedAt {
-                                    Text("最近使用 " + d.formatted(date: .abbreviated, time: .omitted))
+                                    Text(L.s.settings.lastUsed(shortDate(d)))
                                         .font(.caption2).foregroundStyle(.tertiary)
                                 } else if let d = p.createdAt {
-                                    Text("添加于 " + d.formatted(date: .abbreviated, time: .omitted))
+                                    Text(L.s.settings.addedOn(shortDate(d)))
                                         .font(.caption2).foregroundStyle(.tertiary)
                                 }
                             }
                             Spacer()
-                            Button("删除") { Task { await model.deletePasskey(p) } }
+                            Button(L.s.settings.delete) { Task { await model.deletePasskey(p) } }
                                 .buttonStyle(LinkButton()).font(.caption2)
                         }
                         .padding(.vertical, 8)
@@ -613,18 +695,18 @@ struct SettingsView: View {
             }
             if model.passkeyCodeSent {
                 if !model.pkCodeSentTo.isEmpty {
-                    Text("验证码已发到 \(model.pkCodeSentTo)")
+                    Text(L.s.settings.codeSentTo(model.pkCodeSentTo))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 Field(icon: "number") {
-                    TextField("6 位验证码", text: $pkCode)
+                    TextField(L.s.settings.codeField, text: $pkCode)
                 }
                 .frame(maxWidth: 240)
                 Field(icon: "pencil") {
-                    TextField("名称（如 MacBook Touch ID）", text: $pkName)
+                    TextField(L.s.settings.passkeyNameField, text: $pkName)
                 }
                 HStack(spacing: 8) {
-                    Button("添加 Passkey") {
+                    Button(L.s.settings.addPasskey) {
                         Task {
                             if await model.enrollPasskey(code: pkCode,
                                                          name: pkName.isEmpty ? "Mac" : pkName) {
@@ -635,20 +717,21 @@ struct SettingsView: View {
                     .buttonStyle(BrandButton())
                     .disabled(pkCode.count != 6 || model.busy)
 
-                    Button(model.pkCodeCooldown > 0 ? "重发 (\(model.pkCodeCooldown)s)" : "重发验证码") {
+                    Button(model.pkCodeCooldown > 0
+                           ? L.s.settings.resendIn(model.pkCodeCooldown) : L.s.settings.resendCode) {
                         Task { await model.sendCode(.passkey) }
                     }
                     .buttonStyle(QuietButton())
                     .disabled(model.pkCodeCooldown > 0 || model.busy)
 
-                    Button("取消") { model.passkeyCodeSent = false; pkCode = ""; pkName = "" }
+                    Button(L.s.settings.cancel) { model.passkeyCodeSent = false; pkCode = ""; pkName = "" }
                         .buttonStyle(LinkButton()).font(.caption)
                 }
             } else {
                 // 与改密码同一道二次因子:验证码先行,泄露的令牌不能给
                 // 账号加登录后门。ad-hoc 构建里系统仪式会被拒,报错文案
                 // 会解释并指去网站。
-                Button("添加 Passkey") { Task { await model.sendCode(.passkey) } }
+                Button(L.s.settings.addPasskey) { Task { await model.sendCode(.passkey) } }
                     .buttonStyle(QuietButton())
                     .disabled(model.busy)
             }
@@ -664,10 +747,11 @@ struct SettingsView: View {
     /// not saying it: a Mac user is exactly the person who needs an API token,
     /// and they had no way to find out where to get one.
     private var siteCard: some View {
-        SettingsCard("在网站上管理", "safari") {
+        let links = Self.siteLinks
+        return SettingsCard(L.s.settings.siteTitle, "safari") {
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(Self.siteLinks, id: \.0) { title, detail, path in
-                    if title != Self.siteLinks.first?.0 {
+                ForEach(links, id: \.0) { title, detail, path in
+                    if title != links.first?.0 {
                         Divider().overlay(Color.white.opacity(0.06))
                     }
                     Button {
@@ -694,26 +778,29 @@ struct SettingsView: View {
         }
     }
 
-    private static let siteLinks: [(String, String, String)] = [
-        ("API Token", "给 PicGo、Typora、curl 等工具上传用", "/settings"),
-        ("绑定 Google / GitHub", "绑定要整页跳转，原生端做不了", "/settings"),
-        ("添加 Passkey", "注册需要在网页里完成，删除可以在本页做", "/settings"),
-        ("删除账号", "", "/settings"),
-    ]
+    private static var siteLinks: [(String, String, String)] {
+        let s = L.s.settings
+        return [
+            (s.siteApiToken, s.siteApiTokenDetail, "/settings"),
+            (s.siteLinkProviders, s.siteLinkProvidersDetail, "/settings"),
+            (s.addPasskey, s.sitePasskeyDetail, "/settings"),
+            (s.siteDeleteAccount, "", "/settings"),
+        ]
+    }
 
     private var dangerCard: some View {
-        SettingsCard("这台设备", "laptopcomputer") {
+        SettingsCard(L.s.settings.device, "laptopcomputer") {
             HStack(alignment: .top) {
-                Text("凭证保存在钥匙串里，重开应用会自动登录。退出登录只会从这台\n设备移除它，服务器上的令牌需要在网站里删除。")
+                Text(L.s.settings.deviceNote)
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 12)
-                Button("退出登录") { model.signOut() }
+                Button(L.s.settings.signOut) { model.signOut() }
                     .buttonStyle(DangerButton())
             }
             HStack {
                 Spacer()
-                Button("在网站上打开") {
+                Button(L.s.settings.openWebsite) {
                     if let u = URL(string: model.server) { NSWorkspace.shared.open(u) }
                 }
                 .buttonStyle(QuietButton())
@@ -723,6 +810,12 @@ struct SettingsView: View {
     }
 
     // MARK: - Bits
+
+    /// 日期按界面语言格式化,而不是跟系统区域走——切成英文界面还印
+    /// 「2026年8月17日」是两套语言混在一行里。
+    private func shortDate(_ d: Date) -> String {
+        d.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted).locale(L.locale))
+    }
 
     private func row(_ k: String, _ v: String) -> some View {
         HStack {

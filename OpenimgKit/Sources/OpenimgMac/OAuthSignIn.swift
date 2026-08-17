@@ -51,7 +51,7 @@ final class OAuthSignIn: NSObject, ASWebAuthenticationPresentationContextProvidi
                       let code = URLComponents(url: callback, resolvingAgainstBaseURL: false)?
                           .queryItems?.first(where: { $0.name == "code" })?.value
                 else {
-                    cont.resume(throwing: OpenimgError.transport("登录回调里没有拿到登录码"))
+                    cont.resume(throwing: OpenimgError.transport(L.s.login.callbackMissingCode))
                     return
                 }
                 cont.resume(returning: code)
@@ -63,7 +63,7 @@ final class OAuthSignIn: NSObject, ASWebAuthenticationPresentationContextProvidi
             s.prefersEphemeralWebBrowserSession = true
             session = s
             if !s.start() {
-                cont.resume(throwing: OpenimgError.transport("无法打开登录窗口"))
+                cont.resume(throwing: OpenimgError.transport(L.s.login.cannotOpenAuthWindow))
             }
         }
     }

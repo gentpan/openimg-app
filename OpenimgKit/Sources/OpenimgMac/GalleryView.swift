@@ -66,15 +66,15 @@ struct GalleryView: View {
     private var filters: some View {
         HStack(spacing: 10) {
             if model.selection.isEmpty {
-                PillRow(items: SortKey.allCases, label: \.label,
+                PillRow(items: SortKey.allCases, label: { L.s.gallery.sortLabel($0) },
                         icon: { $0.icon }, selection: sortBinding)
             } else {
                 HStack(spacing: 8) {
-                    Text("已选 \(model.selection.count) 张")
+                    Text(L.s.gallery.selectedCount(model.selection.count))
                         .font(.callout).foregroundStyle(.white)
-                    Button("删除") { Task { await model.deleteSelected() } }
+                    Button(L.s.common.delete) { Task { await model.deleteSelected() } }
                         .buttonStyle(DangerButton())
-                    Button("取消") { model.selection = [] }
+                    Button(L.s.common.cancel) { model.selection = [] }
                         .buttonStyle(QuietButton())
                 }
                 .padding(.leading, 4)
@@ -82,7 +82,8 @@ struct GalleryView: View {
 
             Spacer()
 
-            Button(model.selection.count == model.images.count ? "取消全选" : "全选本页") {
+            Button(model.selection.count == model.images.count
+                   ? L.s.gallery.deselectAll : L.s.gallery.selectAll) {
                 model.toggleAll()
             }
             .buttonStyle(QuietButton())
@@ -103,7 +104,7 @@ struct GalleryView: View {
                 Text("\(min(e.processed, e.total))/\(e.total)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
-                Button("取消") { model.exportCancel() }
+                Button(L.s.common.cancel) { model.exportCancel() }
                     .buttonStyle(QuietButton())
             }
         } else {
@@ -112,16 +113,16 @@ struct GalleryView: View {
                 panel.canChooseFiles = false
                 panel.canChooseDirectories = true
                 panel.allowsMultipleSelection = false
-                panel.prompt = "导出到此目录"
+                panel.prompt = L.s.gallery.exportPanelPrompt
                 if panel.runModal() == .OK, let url = panel.url {
                     model.exportDismiss()
                     Task { await model.exportAll(to: url) }
                 }
             } label: {
-                Label("导出全部", systemImage: "square.and.arrow.down")
+                Label(L.s.gallery.exportAll, systemImage: "square.and.arrow.down")
             }
             .buttonStyle(QuietButton())
-            .help("把整个图库下载到本地目录；已存在的文件跳过，中断后重跑只补缺的。导出的是存储的图片——开着自动转换时是 WebP/AVIF，不是上传前的原文件。")
+            .help(L.s.gallery.exportHelp)
         }
     }
 
@@ -132,16 +133,16 @@ struct GalleryView: View {
 
     private var statusBar: some View {
         HStack(spacing: 8) {
-            Text("\(model.total) 张")
+            Text(L.s.common.imageCount(model.total))
             if let q = model.quota {
                 Text("·").foregroundStyle(.quaternary)
-                Text("已用 \(model.bytes(q.usedBytes))")
+                Text(L.s.gallery.usedSpace(model.bytes(q.usedBytes)))
             }
             Spacer()
             exportControl
             if model.pageCount > 1 {
                 ToolCluster {
-                    ToolTile(icon: "chevron.left", help: "上一页",
+                    ToolTile(icon: "chevron.left", help: L.s.gallery.prevPage,
                              disabled: model.page == 0 || model.busy) {
                         Task { await model.go(to: model.page - 1) }
                     }
@@ -149,7 +150,7 @@ struct GalleryView: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .frame(minWidth: 46)
-                    ToolTile(icon: "chevron.right", help: "下一页",
+                    ToolTile(icon: "chevron.right", help: L.s.gallery.nextPage,
                              disabled: model.page >= model.pageCount - 1 || model.busy) {
                         Task { await model.go(to: model.page + 1) }
                     }
@@ -225,16 +226,17 @@ private struct Card: View {
         .onTapGesture { model.detail = active ? nil : img }
         .contextMenu {
             ForEach(LinkFormat.allCases, id: \.self) { f in
-                Button("复制\(f.label)") {
-                    model.copy(f.render(img)); model.announce("已复制\(f.label)")
+                let name = L.s.gallery.linkLabel(f)
+                Button(L.s.gallery.copyFormat(name)) {
+                    model.copy(f.render(img)); model.announce(L.s.gallery.copiedFormat(name))
                 }
             }
             Divider()
-            Button("在浏览器打开") {
+            Button(L.s.gallery.openInBrowser) {
                 if let u = URL(string: img.shortURL ?? img.url) { NSWorkspace.shared.open(u) }
             }
             Divider()
-            Button("删除", role: .destructive) { Task { await model.delete(img) } }
+            Button(L.s.common.delete, role: .destructive) { Task { await model.delete(img) } }
         }
     }
 
@@ -267,18 +269,18 @@ private struct EmptyState: View {
                 ProgressView()
             } else if !model.search.isEmpty {
                 icon("magnifyingglass")
-                Text("没有匹配「\(model.search)」的图片").font(.title3.weight(.medium))
-                Button("清除搜索") {
+                Text(L.s.gallery.noMatches(model.search)).font(.title3.weight(.medium))
+                Button(L.s.gallery.clearSearch) {
                     model.search = ""
                     Task { await model.load(resetPage: true) }
                 }
                 .buttonStyle(QuietButton())
             } else {
                 icon("photo.on.rectangle.angled")
-                Text("图库还是空的").font(.title3.weight(.medium))
-                Text("拖一张图片进来，或按 ⌘U 选择文件")
+                Text(L.s.gallery.emptyTitle).font(.title3.weight(.medium))
+                Text(L.s.gallery.emptyHint)
                     .font(.callout).foregroundStyle(.secondary)
-                Button("上传第一张") { model.section = .upload }
+                Button(L.s.gallery.uploadFirst) { model.section = .upload }
                     .buttonStyle(BrandButton())
             }
         }

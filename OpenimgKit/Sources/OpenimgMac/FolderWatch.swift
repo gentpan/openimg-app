@@ -176,7 +176,7 @@ extension AppModel {
             watchManifestLoadedFrom = murl
         }
 
-        watchStatus = "扫描中…"
+        watchStatus = L.s.watch.scanning
         let folders = watchFolders
         // 遍历与 stat 放后台;结果是纯值,拿回主线程逐个处理。
         let found: [(path: String, size: Int64, mtime: Double)] = await Task.detached {
@@ -233,7 +233,7 @@ extension AppModel {
             if let reason = rejectLocally(url) {
                 watchSkip.insert(f.path)
                 failed += 1
-                if watchLastIssue == nil { watchLastIssue = "部分文件被跳过:\(reason)" }
+                if watchLastIssue == nil { watchLastIssue = L.s.watch.skippedSome(reason) }
                 continue
             }
 
@@ -264,7 +264,7 @@ extension AppModel {
                 continue
             }
 
-            watchStatus = "上传 \(url.lastPathComponent)…"
+            watchStatus = L.s.watch.uploadingFile(url.lastPathComponent)
             var toSend = url
             var temp: URL?
             if uploadMode == .optimized, maxImageWidth > 0,
@@ -316,7 +316,7 @@ extension AppModel {
         // 以下只是界面反馈与续接调度:扫描中被禁用或登出后不该再冒出来。
         guard watchEnabled, connected else { return }
         if uploaded > 0 {
-            announce("目录监控:新上传 \(uploaded) 张")
+            announce(L.s.watch.uploadedAnnounce(uploaded))
             quota = try? await client().quota()
             // 后台上传不打断前台浏览:深翻页或有选择时不动列表,状态行的
             // 「本次 +N」足够提示。
@@ -324,11 +324,11 @@ extension AppModel {
                 await load(resetPage: true)
             }
         }
-        var line = "清单 \(watchManifest.count) 条"
-        if uploaded > 0 { line += " · 本次 +\(uploaded)" }
-        if adopted > 0 { line += " · 收编 \(adopted)" }
-        if failed > 0 { line += " · 跳过 \(failed)" }
-        watchStatus = line
+        var parts = [L.s.watch.manifestCount(watchManifest.count)]
+        if uploaded > 0 { parts.append(L.s.watch.addedThisRun(uploaded)) }
+        if adopted > 0 { parts.append(L.s.watch.adoptedCount(adopted)) }
+        if failed > 0 { parts.append(L.s.watch.skippedCount(failed)) }
+        watchStatus = parts.joined(separator: " · ")
         if watchScanAgain {
             watchScanAgain = false
             watchScanSoon(after: 0.5)
@@ -372,7 +372,7 @@ extension AppModel {
         do {
             return try await client().upload(fileURL: file, filename: filename)
         } catch let OpenimgError.rateLimited(retryAfter) {
-            watchStatus = "限流,\(retryAfter) 秒后继续…"
+            watchStatus = L.s.watch.rateLimitedRetry(retryAfter)
             try? await Task.sleep(for: .seconds(Double(max(1, retryAfter)) + 0.5))
             return try await client().upload(fileURL: file, filename: filename)
         }

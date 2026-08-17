@@ -25,7 +25,7 @@ struct OpenimgMacApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("上传图片…") {
+                Button(L.s.nav.uploadImages) {
                     model.section = .upload
                     Task { await model.pickAndUpload() }
                 }
@@ -33,7 +33,7 @@ struct OpenimgMacApp: App {
                 .disabled(!model.connected)
             }
             CommandGroup(after: .toolbar) {
-                Button("刷新") { Task { await model.refreshCurrent() } }
+                Button(L.s.common.refresh) { Task { await model.refreshCurrent() } }
                     .keyboardShortcut("r")
                     .disabled(!model.connected)
             }
@@ -58,6 +58,10 @@ struct RootView: View {
         }
         .frame(minWidth: 900, minHeight: 560)
         .windowSurface()
+        // 文案取自 L.s 这个静态量而非各视图观察的属性,单靠 objectWillChange
+        // 只会刷新恰好在读 model 的视图。换语言时把 epoch 挂上 .id 让整树
+        // 重建——代价是回到默认页,但换语言本就是一次性动作。
+        .id(model.langEpoch)
         .task { await model.restore() }
     }
 
@@ -116,30 +120,31 @@ struct TopBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(model.section.label)
+            Text(L.s.nav.section(model.section))
                 .font(.title3.weight(.semibold))
 
             Spacer(minLength: 12)
 
             if model.section == .gallery {
                 ToolCluster {
-                    menuTile("arrow.up.arrow.down", "排序") {
+                    menuTile("arrow.up.arrow.down", L.s.nav.sort) {
                         ForEach(SortKey.allCases) { s in
                             Button {
                                 model.sort = s
                                 Task { await model.load(resetPage: true) }
                             } label: {
-                                Label(s.label, systemImage: model.sort == s ? "checkmark" : s.icon)
+                                Label(L.s.gallery.sortLabel(s),
+                                      systemImage: model.sort == s ? "checkmark" : s.icon)
                             }
                         }
                     }
-                    menuTile("square.grid.2x2", "每页数量") {
+                    menuTile("square.grid.2x2", L.s.nav.perPage) {
                         ForEach(model.pageSizes, id: \.self) { n in
                             Button {
                                 model.pageSize = n
                                 Task { await model.load(resetPage: true) }
                             } label: {
-                                Label("\(n) 张/页",
+                                Label(L.s.nav.perPageCount(n),
                                       systemImage: model.pageSize == n ? "checkmark" : "square.grid.2x2")
                             }
                         }
@@ -148,10 +153,10 @@ struct TopBar: View {
             }
 
             ToolCluster {
-                ToolTile(icon: "arrow.clockwise", help: "刷新", disabled: model.busy) {
+                ToolTile(icon: "arrow.clockwise", help: L.s.common.refresh, disabled: model.busy) {
                     Task { await model.refreshCurrent() }
                 }
-                ToolTile(icon: "arrow.up.circle", help: "上传 (⌘U)") {
+                ToolTile(icon: "arrow.up.circle", help: L.s.nav.uploadHelp) {
                     model.section = .upload
                     Task { await model.pickAndUpload() }
                 }
@@ -240,7 +245,7 @@ struct Sidebar: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 12))
                 .foregroundStyle(searchFocused ? .secondary : .tertiary)
-            TextField("搜索文件名", text: $model.search)
+            TextField(L.s.nav.searchPlaceholder, text: $model.search)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($searchFocused)
@@ -283,7 +288,7 @@ struct Sidebar: View {
                         Text(a.name.isEmpty ? a.email : a.name)
                             .font(.callout).lineLimit(1)
                         if let q = model.quota {
-                            Text("\(model.bytes(q.availableBytes)) 可用")
+                            Text(L.s.nav.availableSpace(model.bytes(q.availableBytes)))
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
                     }
@@ -296,7 +301,7 @@ struct Sidebar: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .help("退出登录（仅移除本机令牌）")
+                    .help(L.s.nav.signOutHelp)
                 }
                 if let q = model.quota, q.quotaBytes > 0 {
                     GeometryReader { geo in
@@ -342,7 +347,7 @@ private struct SidebarRow: View {
                     .symbolEffect(.bounce.up.byLayer, value: active)
                     // And a slow pulse while an upload is running.
                     .symbolEffect(.pulse, isActive: busy)
-                Text(section.label).font(.system(size: 15))
+                Text(L.s.nav.section(section)).font(.system(size: 15))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(active ? AnyShapeStyle(Color.brandInk) : AnyShapeStyle(.secondary))
