@@ -17,13 +17,35 @@ struct FormSheet<Content: View, Footer: View>: View {
     @ViewBuilder let content: Content
     @ViewBuilder let footer: Footer
 
+    /// 用环境里的 dismiss 而不是往每个调用点要一个 Binding:这个容器被四个
+    /// 弹窗共用,dismiss 对 .sheet 一律有效,加参数则要改四处。
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline)
-                if let subtitle {
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.headline)
+                    if let subtitle {
+                        Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
+                Spacer(minLength: 0)
+                // 标题栏右上角的关闭。底部虽然有"取消/完成",但这个窗没有系统
+                // 标题栏,少了这个叉就只剩 Esc 和滑到底两条路——而选图窗里内容
+                // 一多,底部按钮本身就滚出视野了。
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(L.s.common.close)
+                .accessibilityLabel(L.s.common.close)
             }
             .padding(.horizontal, 20)
             .padding(.top, 18)

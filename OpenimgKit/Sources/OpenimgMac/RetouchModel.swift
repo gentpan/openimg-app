@@ -30,6 +30,16 @@ extension AppModel {
 
     var retouchCanAddSource: Bool { retouchSources.count < aiEditSourceLimit }
 
+    /// 最近上传的若干张,供输入区一键取用。
+    ///
+    /// 借图库页当前那一页的 images 而不是另发一次请求:进这个页面之前图库
+    /// 早就拉过了,为一条快捷入口再问服务器一遍不值当。已经选中的排除掉——
+    /// 留着只会让人点了没反应(toggle 会把它移除,那是另一回事)。
+    var retouchRecent: [RemoteImage] {
+        let chosen = Set(retouchSources.map(\.id))
+        return images.filter { !chosen.contains($0.id) }.prefix(10).map { $0 }
+    }
+
     var retouchCanSubmit: Bool {
         aiEnabled && !retouchSubmitting && aiRemaining > 0
             && !retouchSources.isEmpty
@@ -73,15 +83,45 @@ extension AppModel {
         if retouchLibrary.isEmpty { retouchLibrary = images }
     }
 
-    /// 拉一页给选图面板用。搜索框每改一次就调一次(视图侧做去抖)。
+    /// 选图面板一次拉多少张。
+    ///
+    /// 60 张够铺满两三屏,再多一次请求就慢得能看出来。翻页由
+    /// retouchLoadMoreLibrary 接着做——原来只拉这一页就不管了,图多的账号
+    /// 在面板里永远只看得到最近的 60 张,更早的图根本选不到。
+    private static let retouchPageSize = 60
+
+    /// 拉第一页给选图面板用。搜索框每改一次就调一次(视图侧做去抖)。
     func retouchLoadLibrary() async {
         guard connected, let c = try? client() else { return }
         retouchLibraryLoading = true
         defer { retouchLibraryLoading = false }
         let q = retouchSearch.trimmingCharacters(in: .whitespaces)
-        guard let page = try? await c.images(limit: 60, offset: 0, query: q, sort: .newest)
+        guard let page = try? await c.images(limit: Self.retouchPageSize, offset: 0,
+                                             query: q, sort: .newest)
         else { return }
         retouchLibrary = page.images
+        retouchLibraryMore = page.images.count == Self.retouchPageSize
+    }
+
+    /// 网格滚到底时接着拉下一页。
+    ///
+    /// 用已有条数当 offset 而不是记页码:搜索一变整个列表就重来,页码还得
+    /// 单独复位,而条数天然跟着列表走。
+    func retouchLoadMoreLibrary() async {
+        guard connected, retouchLibraryMore, !retouchLibraryLoading,
+              let c = try? client() else { return }
+        retouchLibraryLoading = true
+        defer { retouchLibraryLoading = false }
+        let q = retouchSearch.trimmingCharacters(in: .whitespaces)
+        let offset = retouchLibrary.count
+        guard let page = try? await c.images(limit: Self.retouchPageSize, offset: offset,
+                                             query: q, sort: .newest)
+        else { return }
+        // 去重:翻页期间有新图上传会让后一页与前一页重叠,不挡的话同一张图
+        // 会在网格里出现两次,而它们的 id 相同,ForEach 会直接报重复。
+        let have = Set(retouchLibrary.map(\.id))
+        retouchLibrary.append(contentsOf: page.images.filter { !have.contains($0.id) })
+        retouchLibraryMore = page.images.count == Self.retouchPageSize
     }
 
     // MARK: - 提交
@@ -138,6 +178,7 @@ extension AppModel {
         retouchPrompt = ""
         retouchSources = []
         retouchLibrary = []
+        retouchLibraryMore = true
         retouchSearch = ""
         retouchSubmitting = false
         retouchPicking = false

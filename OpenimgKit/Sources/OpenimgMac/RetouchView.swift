@@ -90,6 +90,10 @@ struct RetouchView: View {
                 .buttonStyle(.plain)
             }
 
+            if model.retouchCanAddSource, !model.retouchRecent.isEmpty {
+                recentStrip
+            }
+
             Spacer(minLength: 0)
 
             Text(L.s.retouch.sourceCount(model.retouchSources.count, aiEditSourceLimit))
@@ -97,6 +101,36 @@ struct RetouchView: View {
                 .foregroundStyle(.tertiary)
                 .padding(.top, 22)
         }
+    }
+
+    /// 最近上传的十张,一点就进原图行。
+    ///
+    /// 大多数修图针对的就是刚传上去那张,为它开一次选图窗、再从头找一遍,
+    /// 步骤全花在"找回自己五秒前传的图"上。方块比原图小一半:它是捷径不是
+    /// 主角,尺寸上就该分得出来。
+    private var recentStrip: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(L.s.retouch.recentLabel)
+                .font(.system(size: 9))
+                .foregroundStyle(.quaternary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 5) {
+                    ForEach(model.retouchRecent) { img in
+                        Button { model.retouchToggleSource(img) } label: {
+                            Thumbnail(url: img.thumbURL, client: try? model.client())
+                                .frame(width: 44, height: 44)
+                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(img.origName)
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+            .frame(maxWidth: 240)
+        }
+        .padding(.top, 8)
     }
 
     /// 一键预设。点了只是把句子填进输入框,用户仍可接着改——这些是起点,
@@ -301,6 +335,22 @@ private struct SourcePicker: View {
                     ForEach(model.retouchLibrary) { img in
                         pickTile(img)
                     }
+                }
+                if model.retouchLibraryMore {
+                    // 触底加载。网格在 ScrollView 里,这块要滚到底才渲染,
+                    // 它的出现本身就是"到底了"的信号。
+                    //
+                    // .id 挂在条数上是必需的:同一个视图身份的 task 只跑一次,
+                    // 装完一页后这块还在视野里也不会再触发,于是只能多加载
+                    // 一页就卡住。换个 id 相当于换个新视图,继续往下装。
+                    HStack {
+                        Spacer()
+                        ProgressView().controlSize(.small)
+                        Spacer()
+                    }
+                    .padding(.vertical, 12)
+                    .id(model.retouchLibrary.count)
+                    .task { await model.retouchLoadMoreLibrary() }
                 }
             }
         } footer: {

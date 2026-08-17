@@ -168,6 +168,8 @@ final class AppModel: ObservableObject {
     @Published var retouchLibrary: [RemoteImage] = []
     @Published var retouchSearch = ""
     @Published var retouchLibraryLoading = false
+    /// 选图面板还有没有下一页。翻到底就置假,免得空转。
+    @Published var retouchLibraryMore = true
 
     // 上传前编辑(实现在 EditorSheet.swift)
     @Published var editTarget: EditTarget?

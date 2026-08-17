@@ -17,6 +17,8 @@ struct RetouchPreset: Identifiable, Hashable, Sendable {
 struct RetouchStrings: Sendable {
     // 原图
     let sourcesLabel: String
+    /// 输入区那条「最近上传」快捷条的小标。
+    let recentLabel: String
     let addSource: String
     let removeSource: String
     /// 已选 / 上限。
@@ -75,6 +77,7 @@ struct RetouchStrings: Sendable {
 extension RetouchStrings {
     static let zh = RetouchStrings(
         sourcesLabel: "原图",
+        recentLabel: "最近上传",
         addSource: "从图库选图",
         removeSource: "移除这张",
         sourceCount: { picked, limit in "\(picked) / \(limit)" },
@@ -122,6 +125,7 @@ extension RetouchStrings {
 
     static let en = RetouchStrings(
         sourcesLabel: "Source",
+        recentLabel: "Recent",
         addSource: "Pick from Gallery",
         removeSource: "Remove This One",
         sourceCount: { picked, limit in "\(picked) / \(limit)" },
