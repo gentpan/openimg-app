@@ -1,0 +1,171 @@
+import Foundation
+
+/// 文生图。与后端 `internal/api/aigen_handlers.go` 一一对应。
+///
+/// 模型分成两半,是因为这件事本身分两半:`AIStatus` 回答「我这一刻还能生成
+/// 几次」,`AIGeneration` 回答「刚才那一条到哪一步了」。提交只拿得到一条
+/// pending 记录——上游要几十秒,请求挂在那里等只会先撞上代理超时——图得靠
+/// 轮询 `/api/ai/generations` 等出来。
+
+/// 这个部署有没有开 AI,以及当下的额度。
+///
+/// `enabled` 为假时功能应当**整个消失**而不是变灰:没配 APIMART_API_KEY 的
+/// 自建实例根本没有这个能力,给一个点不动的按钮等于承诺了一件做不到的事。
+public struct AIStatus: Decodable, Sendable, Equatable {
+    public let enabled: Bool
+    /// 本月余额。每月重置而非累加,签到可以往上加(封顶为月配额的两倍),
+    /// 所以它可能大于 `monthly`。
+    public let credits: Int
+    public let usedToday: Int
+    public let dailyLimit: Int
+    /// 每月配给量,用来说明「一共有多少」,不是剩余。
+    public let monthly: Int
+    /// 这一刻真正还能生成几次 = min(credits, dailyLimit - usedToday)。
+    public let remaining: Int
+    public let sizes: [String]
+    public let resolutions: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case enabled, credits, monthly, remaining, sizes, resolutions
+        case usedToday = "used_today"
+        case dailyLimit = "daily_limit"
+    }
+
+    /// 关掉时服务器只回 `{"enabled": false}`,别的键根本不存在。逐个
+    /// `decodeIfPresent` 而不是让整个响应解析失败——「没开」是正常答案。
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        credits = try c.decodeIfPresent(Int.self, forKey: .credits) ?? 0
+        usedToday = try c.decodeIfPresent(Int.self, forKey: .usedToday) ?? 0
+        dailyLimit = try c.decodeIfPresent(Int.self, forKey: .dailyLimit) ?? 0
+        monthly = try c.decodeIfPresent(Int.self, forKey: .monthly) ?? 0
+        remaining = try c.decodeIfPresent(Int.self, forKey: .remaining) ?? 0
+        sizes = try c.decodeIfPresent([String].self, forKey: .sizes) ?? []
+        resolutions = try c.decodeIfPresent([String].self, forKey: .resolutions) ?? []
+    }
+
+    /// 「用完了」有两种,解法完全不同:今日用完等明天就有,本月用完得靠签到
+    /// 攒。界面必须说清是哪一种,否则用户只会一直点。
+    public var dailyExhausted: Bool { dailyLimit > 0 && usedToday >= dailyLimit }
+    public var monthlyExhausted: Bool { credits <= 0 }
+    public var canGenerate: Bool { enabled && remaining > 0 }
+}
+
+/// 一条生成记录的状态。只有 completed/failed 是终态。
+public enum AIGenStatus: String, Codable, Sendable, Hashable {
+    case pending, running, completed, failed
+
+    public var isTerminal: Bool { self == .completed || self == .failed }
+
+    /// 认不出的状态按「还在跑」处理。这个字段只会朝终态走,把未知当终态会让
+    /// 界面提前宣布结束、停掉轮询,然后那条记录永远停在错的样子上。
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = AIGenStatus(rawValue: raw) ?? .running
+    }
+}
+
+/// 一次生成的全过程记录。
+///
+/// `imageID` 只在 completed 后才有,对应的图片在 `AIGenerationPage.images`
+/// 里,字段与图库那份完全一致——从入库那一刻起它就是一张普通图片。
+public struct AIGeneration: Decodable, Sendable, Identifiable, Hashable {
+    public let id: String
+    public let prompt: String
+    public let model: String
+    public let size: String
+    public let resolution: String
+    public let status: AIGenStatus
+    /// 失败原因,照实显示即可。失败会退还余额(后端做的),今日次数不退。
+    public let error: String?
+    public let imageID: String?
+    public let credits: Int
+    public let createdAt: Date
+    public let doneAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, prompt, model, size, resolution, status, error, credits
+        case imageID = "image_id"
+        case createdAt = "created_at"
+        case doneAt = "done_at"
+    }
+}
+
+/// `GET /api/ai/generations` 的回应。
+public struct AIGenerationPage: Decodable, Sendable {
+    public let generations: [AIGeneration]
+    /// 按图片 id 索引,与图库列表返回的对象同构。
+    public let images: [String: RemoteImage]
+
+    enum CodingKeys: String, CodingKey { case generations, images }
+
+    /// 一条记录都没有时 Go 那边的空切片会 marshal 成 `null`,不是 `[]`。
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        generations = try c.decodeIfPresent([AIGeneration].self, forKey: .generations) ?? []
+        images = try c.decodeIfPresent([String: RemoteImage].self, forKey: .images) ?? [:]
+    }
+
+    public func image(for gen: AIGeneration) -> RemoteImage? {
+        gen.imageID.flatMap { images[$0] }
+    }
+}
+
+/// 提交失败的几种结局。
+///
+/// 单独一个错误类型,而不是复用 `OpenimgError`:同样是 429,在上传那条路上
+/// 意思是「传太快了,等一分钟」,在这条路上意思是「今天的次数用完了,等明
+/// 天」——把后者说成前者是个会让人白等的错建议。402 同理,那是「这个月用
+/// 完了」,得靠签到而不是靠等。
+public enum AIGenError: Error, LocalizedError, Equatable, Sendable {
+    case disabled(String)
+    case notVerified(String)
+    case dailyLimit(String)
+    case monthlyExhausted(String)
+    case badPrompt(String)
+    case upstream(String)
+    case other(status: Int, message: String)
+
+    /// 服务器带回的原话。界面优先用自己的 i18n 文案,拿不准时退回这一句。
+    public var serverMessage: String {
+        switch self {
+        case .disabled(let m), .notVerified(let m), .dailyLimit(let m),
+             .monthlyExhausted(let m), .badPrompt(let m), .upstream(let m):
+            m
+        case .other(_, let m):
+            m
+        }
+    }
+
+    public var errorDescription: String? {
+        if !serverMessage.isEmpty { return serverMessage }
+        return switch self {
+        case .disabled: "这个部署没有开启 AI 生成"
+        case .notVerified: "请先验证邮箱"
+        case .dailyLimit: "今天的生成次数已用完"
+        case .monthlyExhausted: "这个月的生成次数已用完"
+        case .badPrompt: "描述为空或过长"
+        case .upstream: "上游生成服务暂时不可用"
+        case .other(let status, _): "服务器返回 \(status)"
+        }
+    }
+
+    static func from(status: Int, body: Data) -> AIGenError {
+        let obj = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
+        let message = obj["error"] as? String ?? ""
+        return switch status {
+        case 400: .badPrompt(message)
+        case 402: .monthlyExhausted(message)
+        case 403: .notVerified(message)
+        case 429: .dailyLimit(message)
+        case 502: .upstream(message)
+        case 503: .disabled(message)
+        default: .other(status: status, message: message)
+        }
+    }
+}
+
+/// 描述的长度上限,与后端 `handleAIGenerate` 里的那道闸门一致。本地先拦,
+/// 免得白跑一趟——按字符数(rune)算,不是字节数。
+public let aiPromptLimit = 1000

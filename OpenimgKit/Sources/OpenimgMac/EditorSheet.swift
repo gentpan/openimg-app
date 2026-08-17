@@ -35,6 +35,46 @@ extension AppModel {
         }
     }
 
+    /// 从图库右键进编辑器:先把原图取回本地,再落到编辑页。
+    ///
+    /// 改出来的结果是**另一张图**,不是原地覆盖。已入库的对象是不可变的
+    /// ——按 SHA 去重、进了 CDN 缓存、可能已经有短链在外面流传;原地改会
+    /// 让所有已发出去的链接指向一张别的图。所以这里只负责把原图变成一份
+    /// 本地素材,存盘时走的仍是正常的上传流水线。
+    ///
+    /// 取的是公开对象地址,不带令牌——与 Exporter 同一条纪律:令牌不发给
+    /// 第三方存储主机。
+    func editFromGallery(_ img: RemoteImage) async {
+        guard let src = URL(string: img.url) else {
+            announce(L.s.gallery.editFetchFailed)
+            return
+        }
+        announce(L.s.gallery.editFetching)
+
+        // 缓存到临时目录并按图片 ID 命名:同一张图反复编辑不必重下,而临时
+        // 目录由系统回收,不用自己管生命周期。
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("edit-\(img.id).\(img.ext)")
+        if !FileManager.default.fileExists(atPath: dest.path) {
+            do {
+                let (data, resp) = try await URLSession.shared.data(from: src)
+                guard let http = resp as? HTTPURLResponse,
+                      (200..<300).contains(http.statusCode), !data.isEmpty else {
+                    announce(L.s.gallery.editFetchFailed)
+                    return
+                }
+                try data.write(to: dest, options: .atomic)
+            } catch {
+                announce(L.s.gallery.editFetchFailed)
+                return
+            }
+        }
+
+        // 能不能编辑(动图、超大图)交给 openEditor 判定,它会给出对应的说法。
+        openEditor(dest)
+        if editTarget != nil { section = .editor }
+    }
+
     /// 拖放路由:开了"单张先编辑"且**拖的就是单个文件**时进编辑器——按
     /// 原始拖放物判定,不按 expand 展开后的数量,否则"恰好含一张图的文件
     /// 夹"也会弹编辑器,和开关文案矛盾。

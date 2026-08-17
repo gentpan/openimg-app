@@ -6,7 +6,7 @@ import OpenimgKit
 /// Trailing underscore because `Section` is a SwiftUI type and shadowing it
 /// makes every `Section { }` in a List fail to resolve.
 enum Section_: String, CaseIterable, Identifiable, Hashable {
-    case overview, gallery, upload, editor, settings
+    case overview, gallery, upload, generate, editor, settings
     var id: String { rawValue }
     /// 显示名归 nav 分区管——侧栏、顶栏、这里都取同一份,不各写各的。
     var label: String { L.s.nav.section(self) }
@@ -15,6 +15,7 @@ enum Section_: String, CaseIterable, Identifiable, Hashable {
         case .overview: "chart.bar.doc.horizontal"
         case .gallery: "square.grid.2x2"
         case .upload: "arrow.up.circle"
+        case .generate: "sparkles"
         case .editor: "crop"
         case .settings: "gearshape"
         }
@@ -28,6 +29,7 @@ enum Section_: String, CaseIterable, Identifiable, Hashable {
         case .overview: "chart.bar.doc.horizontal.fill"
         case .gallery: "square.grid.2x2.fill"
         case .upload: "arrow.up.circle.fill"
+        case .generate: "sparkles.rectangle.stack"
         case .editor: "crop.rotate"
         case .settings: "gearshape.fill"
         }
@@ -125,6 +127,23 @@ final class AppModel: ObservableObject {
     // 图库导出(实现在 Exporter.swift)
     @Published var export: ExportProgress?
     var exportCancelled = false
+
+    // AI 文生图(实现在 GenerateModel.swift;存储属性必须declare在类体里)。
+    // aiStatus 为 nil 或 enabled 为假时,侧栏根本不显示这一页——见
+    // visibleSections。
+    @Published var aiStatus: AIStatus?
+    @Published var aiPrompt = ""
+    /// 尺寸与清晰度的可选值由服务器给,这两个只是当前选择;状态到手后会
+    /// 校正到列表里的合法值。
+    @Published var aiSize = "1:1"
+    @Published var aiResolution = "1k"
+    @Published var aiGenerations: [AIGeneration] = []
+    /// 已完成记录对应的图片,按 image_id 索引,与图库那份同构。
+    @Published var aiImages: [String: RemoteImage] = [:]
+    @Published var aiSubmitting = false
+    @Published var aiLoading = false
+    /// 轮询任务。页面消失就取消——没人看着的时候没有理由每三秒问一次。
+    var aiPollTask: Task<Void, Never>?
 
     // 上传前编辑(实现在 EditorSheet.swift)
     @Published var editTarget: EditTarget?
@@ -228,6 +247,7 @@ final class AppModel: ObservableObject {
         while v.hasSuffix("/") { v.removeLast() }
         guard v != server else { return }
         watchStop()
+        aiReset()
         server = v
         UserDefaults.standard.set(v, forKey: "server")
         token = ""
@@ -348,6 +368,7 @@ final class AppModel: ObservableObject {
             quota = try? await c.quota()
             await load(resetPage: true)
             await loadStats()
+            await aiLoadStatus()
             watchSetup()
             if !quiet {
                 announce(L.s.errors.connected(me.email, warning))
@@ -361,6 +382,7 @@ final class AppModel: ObservableObject {
 
     func signOut() {
         watchStop()
+        aiReset()
         watchSkip.removeAll()
         watchStatus = ""
         watchPausedReason = nil
@@ -504,6 +526,9 @@ final class AppModel: ObservableObject {
         switch section {
         case .gallery: await load()
         case .overview: await loadStats()
+        case .generate:
+            await aiLoadStatus()
+            await aiRefresh()
         case .upload, .editor, .settings:
             quota = try? await client().quota()
         }

@@ -33,6 +33,10 @@ struct GalleryStrings: Sendable {
     let copyFormat: @Sendable (String) -> String
     let copiedFormat: @Sendable (String) -> String
     let openInBrowser: String
+    let editImage: String
+    /// 从图库进编辑器要先把原图取回本地,几兆的图有可感的等待,得出声。
+    let editFetching: String
+    let editFetchFailed: String
 
     // 空状态
     let noMatches: @Sendable (String) -> String
@@ -87,6 +91,9 @@ extension GalleryStrings {
         copyFormat: { what in "复制\(what)" },
         copiedFormat: { what in "已复制\(what)" },
         openInBrowser: "在浏览器打开",
+        editImage: "编辑",
+        editFetching: "正在取回原图…",
+        editFetchFailed: "取回原图失败",
 
         noMatches: { query in "没有匹配「\(query)」的图片" },
         clearSearch: "清除搜索",
@@ -137,6 +144,9 @@ extension GalleryStrings {
         copyFormat: { what in "Copy \(what)" },
         copiedFormat: { what in "Copied \(what)" },
         openInBrowser: "Open in Browser",
+        editImage: "Edit",
+        editFetching: "Fetching the original…",
+        editFetchFailed: "Could not fetch the original",
 
         noMatches: { query in "No images match “\(query)”" },
         clearSearch: "Clear Search",

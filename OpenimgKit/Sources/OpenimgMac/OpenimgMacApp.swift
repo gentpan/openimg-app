@@ -73,6 +73,7 @@ struct RootView: View {
                 case .overview: OverviewView(model: model)
                 case .gallery:  GalleryView(model: model)
                 case .upload:   UploadView(model: model)
+                case .generate: GenerateView(model: model)
                 case .editor:   EditorPage(model: model)
                 case .settings: SettingsView(model: model)
                 }
@@ -217,12 +218,15 @@ struct Sidebar: View {
                 .padding(.horizontal, 10)
                 .padding(.bottom, 10)
 
+            // visibleSections 而不是 allCases:没配 AI 的部署里「生成」整行
+            // 不存在,而不是灰着。见 AppModel.visibleSections。
             VStack(spacing: 4) {
-                ForEach(Section_.allCases) { s in
+                ForEach(model.visibleSections) { s in
                     SidebarRow(
                         section: s,
                         active: model.section == s,
-                        busy: s == .upload && model.uploading
+                        busy: (s == .upload && model.uploading)
+                            || (s == .generate && model.aiPending)
                     ) { model.section = s }
                 }
             }

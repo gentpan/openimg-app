@@ -410,6 +410,39 @@ public struct OpenimgClient: Sendable {
         _ = try decode(OK.self, data, resp)
     }
 
+    // MARK: - AI 文生图
+
+    /// 这个部署开没开、我还能生成几次。没开时返回的 `enabled` 为假,入口
+    /// 应当整个藏起来。
+    public func aiStatus() async throws -> AIStatus {
+        let (data, resp) = try await session.data(for: request("GET", "api/ai/status"))
+        return try decode(AIStatus.self, data, resp)
+    }
+
+    /// 最近的生成记录,连带已完成那些对应的图片。轮询靠它。
+    public func aiGenerations() async throws -> AIGenerationPage {
+        let (data, resp) = try await session.data(for: request("GET", "api/ai/generations"))
+        return try decode(AIGenerationPage.self, data, resp)
+    }
+
+    /// 递交一次生成。立刻返回,不等图——回来的记录 status 是 pending,
+    /// 之后靠 `aiGenerations()` 轮出终态。
+    public func aiGenerate(prompt: String, size: String, resolution: String) async throws -> AIGeneration {
+        var req = request("POST", "api/ai/generate")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "prompt": prompt, "size": size, "resolution": resolution,
+        ])
+        let (data, resp) = try await session.data(for: req)
+        // 自己认状态码,不走 `failure`:那张表是按上传的语义写的,会把这里的
+        // 429(今日次数用完,明天才有)说成「上传过于频繁,请 60 秒后再试」。
+        if let http = resp as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw AIGenError.from(status: http.statusCode, body: data)
+        }
+        struct Wrap: Decodable { let generation: AIGeneration }
+        return try decode(Wrap.self, data, resp).generation
+    }
+
     private struct OK: Decodable { let ok: Bool }
 }
 

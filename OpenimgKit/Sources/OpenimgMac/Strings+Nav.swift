@@ -4,10 +4,12 @@ import Foundation
 ///
 /// 只放"框"上的字——页面内部的文案各归各的分区。
 struct NavStrings: Sendable {
-    // 四个分区名。侧栏行、顶栏标题共用一份,别在两处各写各的。
+    // 分区名。侧栏行、顶栏标题共用一份,别在两处各写各的。
     let overview: String
     let gallery: String
     let upload: String
+    /// 「生成」这一行只在部署配了 AI 时出现,见 AppModel.visibleSections。
+    let generate: String
     let editor: String
     let settings: String
 
@@ -34,6 +36,7 @@ extension NavStrings {
         case .overview: overview
         case .gallery: gallery
         case .upload: upload
+        case .generate: generate
         case .editor: editor
         case .settings: settings
         }
@@ -43,6 +46,7 @@ extension NavStrings {
         overview: "概览",
         gallery: "图库",
         upload: "上传",
+        generate: "生成",
         editor: "编辑",
         settings: "设置",
         uploadImages: "上传图片…",
@@ -58,6 +62,7 @@ extension NavStrings {
         overview: "Overview",
         gallery: "Gallery",
         upload: "Upload",
+        generate: "Generate",
         editor: "Edit",
         settings: "Settings",
         uploadImages: "Upload Images…",

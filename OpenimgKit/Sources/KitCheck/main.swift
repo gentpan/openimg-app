@@ -213,6 +213,85 @@ check("外层 key 是 passkeys 而非 credentials", pk?.passkeys?.first?.name ==
 check("时间戳无法解析时返回 nil 而不是抛错",
       PasskeyCredential.date("不是时间") == nil && PasskeyCredential.date(nil) == nil)
 
+section("AI 文生图解析")
+
+// 没配 APIMART_API_KEY 的部署只回这一个键。声明成非可选会让整条状态解析
+// 失败,而症状是"AI 入口时有时无"而不是"这个部署没开 AI"。
+if let off = try? dec.decode(AIStatus.self, from: Data(#"{"enabled":false}"#.utf8)) {
+    check("关闭时只有 enabled 也能解析", !off.enabled)
+    check("缺失的额度字段归零", off.credits == 0 && off.remaining == 0 && off.sizes.isEmpty)
+} else {
+    check("关闭时只有 enabled 也能解析", false)
+}
+
+let statusJSON = """
+{"enabled":true,"credits":42,"used_today":5,"daily_limit":5,"monthly":50,
+ "remaining":0,"sizes":["1:1","16:9"],"resolutions":["1k","2k"]}
+"""
+if let s = try? dec.decode(AIStatus.self, from: Data(statusJSON.utf8)) {
+    check("额度字段的 snake_case 映射", s.usedToday == 5 && s.dailyLimit == 5)
+    // 「用完了」的两种解法完全不同:今天用完等明天,这个月用完得靠签到。
+    // 界面按这两个布尔选句子,选反了就是一句让人白等一天的话。
+    check("余额还有、今日用完 → 今日上限", s.dailyExhausted && !s.monthlyExhausted)
+    check("remaining 为 0 时不可生成", !s.canGenerate)
+} else {
+    check("额度字段的 snake_case 映射", false)
+}
+
+let outOfCredits = """
+{"enabled":true,"credits":0,"used_today":1,"daily_limit":5,"monthly":50,"remaining":0,
+ "sizes":[],"resolutions":[]}
+"""
+check("余额为零识别为本月用完",
+      (try? dec.decode(AIStatus.self, from: Data(outOfCredits.utf8)))?.monthlyExhausted == true)
+
+// Go 的空切片 marshal 成 null 而不是 []。
+check("generations 为 null 时解析成空数组",
+      (try? dec.decode(AIGenerationPage.self,
+                       from: Data(#"{"generations":null,"images":{}}"#.utf8)))?.generations.isEmpty == true)
+
+let genJSON = """
+{"generations":[
+ {"id":"g1","prompt":"一只猫","model":"gpt-image-2","size":"1:1","resolution":"1k",
+  "status":"completed","image_id":"i1","credits":1,
+  "created_at":"2026-08-17T10:00:00.123456789Z","done_at":"2026-08-17T10:00:41.5Z"},
+ {"id":"g2","prompt":"待办","model":"gpt-image-2","size":"16:9","resolution":"2k",
+  "status":"pending","credits":1,"created_at":"2026-08-17T10:02:00Z"}],
+ "images":{"i1":{"id":"i1","orig_name":"一只猫.png","ext":"png","width":1024,"height":1024,
+   "size_stored":900,"url":"U","thumb_url":"T","markdown":"M","html":"H","bbcode":"B",
+   "created_at":"2026-08-17T10:00:41Z"}}}
+"""
+if let page = try? dec.decode(AIGenerationPage.self, from: Data(genJSON.utf8)) {
+    check("生成记录解析", page.generations.count == 2)
+    check("缺 error/image_id/done_at 仍可解析",
+          page.generations[1].error == nil && page.generations[1].imageID == nil
+            && page.generations[1].doneAt == nil)
+    check("完成的记录能取到同构的图片对象",
+          page.image(for: page.generations[0])?.thumbURL == "T")
+    check("未完成的记录取不到图片", page.image(for: page.generations[1]) == nil)
+    check("终态判定", page.generations[0].status.isTerminal && !page.generations[1].status.isTerminal)
+} else {
+    check("生成记录解析", false)
+}
+
+// 服务端将来加一个状态,不该让整页解析失败,更不该被当成终态——那会让轮询
+// 提前收工,记录永远停在错的样子上。
+check("认不出的状态按在途处理",
+      (try? JSONDecoder().decode(AIGenStatus.self, from: Data("\"queued\"".utf8)))?.isTerminal == false)
+
+// 402 与 429 在这条路上是两件事:一个靠签到,一个等明天。通用的 failure()
+// 会把 429 说成"传太快了,等 60 秒",那是句会让人白等的错建议。
+check("429 是今日用完而非限流",
+      AIGenError.from(status: 429, body: Data(#"{"error":"今日已达上限"}"#.utf8))
+        == .dailyLimit("今日已达上限"))
+check("402 是本月用完",
+      AIGenError.from(status: 402, body: Data(#"{"error":"次数已用完"}"#.utf8))
+        == .monthlyExhausted("次数已用完"))
+check("503 是这个部署没开",
+      AIGenError.from(status: 503, body: Data("{}".utf8)) == .disabled(""))
+check("没带 error 字段时退回本地兜底说法",
+      AIGenError.from(status: 503, body: Data("{}".utf8)).errorDescription == "这个部署没有开启 AI 生成")
+
 section("图库网格")
 
 // 默认窗口 1240x820 下网格的可用区。这两个数是从离屏渲染里打印出来的实测

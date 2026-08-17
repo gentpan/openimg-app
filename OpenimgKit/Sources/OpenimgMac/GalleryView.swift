@@ -232,6 +232,9 @@ private struct Card: View {
                 }
             }
             Divider()
+            Button(L.s.gallery.editImage) {
+                Task { await model.editFromGallery(img) }
+            }
             Button(L.s.gallery.openInBrowser) {
                 if let u = URL(string: img.shortURL ?? img.url) { NSWorkspace.shared.open(u) }
             }
