@@ -584,6 +584,25 @@ if true {
     }
 }
 
+// MARK: - TokenStore(令牌持久化)
+
+section("TokenStore(令牌持久化)")
+
+// CLI 环境没有 keychain entitlement,save 自动落到文件回退——正是 ad-hoc
+// 构建的路径。真签名构建走数据保护钥匙串,此处测不到但接口相同。
+let tokenStore = TokenStore(service: "io.openimg.token.kitcheck")
+let fakeServer = "https://kitcheck.example.openimg.io"
+do {
+    try tokenStore.save("oimg_kitcheck_token_123", server: fakeServer)
+    check("保存后能读回", tokenStore.load(server: fakeServer) == "oimg_kitcheck_token_123")
+    try tokenStore.save("oimg_replaced", server: fakeServer)
+    check("重复保存是覆盖", tokenStore.load(server: fakeServer) == "oimg_replaced")
+    check("删除返回 true", tokenStore.delete(server: fakeServer))
+    check("删除后读不到", tokenStore.load(server: fakeServer) == nil)
+} catch {
+    check("TokenStore 保存不抛错(\(error))", false)
+}
+
 // MARK: - Result
 
 print("\n\(checks - failures)/\(checks) 通过")

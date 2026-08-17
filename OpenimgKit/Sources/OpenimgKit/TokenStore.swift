@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Security
 
 /// Keychain-backed storage for the personal access token.
@@ -35,37 +36,53 @@ public struct TokenStore: Sendable {
         return q
     }
 
-    /// Runs `body` against the data-protection keychain, retrying on the older
-    /// one when this build is not entitled to the former.
-    private func withKeychain(_ body: (Bool) -> OSStatus) -> OSStatus {
-        let status = body(true)
-        if status == errSecMissingEntitlement { return body(false) }
-        return status
+    /// ad-hoc 构建的持久化出口。旧式钥匙串按代码签名身份做访问控制,而
+    /// ad-hoc 签名每次重新打包身份都变——上一个构建存的令牌,下一个构建
+    /// 读不回来,表现就是「每次打开都要重新登录」。0600 的本地文件在防护
+    /// 上与旧式钥匙串相差无几(后者本来就能被 `security` 命令导出),而
+    /// 令牌按设计不能删号、不能再铸令牌,泄露半径有限。真签名构建(带
+    /// keychain entitlement)走数据保护钥匙串,永远不会落到这条路;钥匙串
+    /// 写入成功时顺手删掉历史文件,完成迁移。
+    private func fileURL(server: String) -> URL {
+        let digest = SHA256.hash(data: Data(server.utf8))
+            .prefix(8).map { String(format: "%02x", $0) }.joined()
+        let base = FileManager.default.urls(for: .applicationSupportDirectory,
+                                            in: .userDomainMask)[0]
+        return base.appendingPathComponent("io.openimg.mac/token-\(digest)")
     }
 
     public func save(_ token: String, server: String) throws {
-        let status = withKeychain { dp in
-            var attrs = query(server: server, dataProtection: dp)
-            SecItemDelete(attrs as CFDictionary) // upsert; add-then-update races
-            attrs[kSecValueData as String] = Data(token.utf8)
-            attrs[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-            return SecItemAdd(attrs as CFDictionary, nil)
+        var attrs = query(server: server, dataProtection: true)
+        SecItemDelete(attrs as CFDictionary) // upsert; add-then-update races
+        attrs[kSecValueData as String] = Data(token.utf8)
+        attrs[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        let status = SecItemAdd(attrs as CFDictionary, nil)
+        if status == errSecSuccess {
+            try? FileManager.default.removeItem(at: fileURL(server: server))
+            return
         }
-        guard status == errSecSuccess else { throw KeychainError(status: status) }
+        guard status == errSecMissingEntitlement else { throw KeychainError(status: status) }
+        let url = fileURL(server: server)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data(token.utf8).write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600],
+                                              ofItemAtPath: url.path)
     }
 
     public func load(server: String) -> String? {
-        var found: Data?
-        _ = withKeychain { dp in
+        // 数据保护钥匙串 → 旧式钥匙串(老构建的存量,只读迁移) → 文件
+        for dp in [true, false] {
             var q = query(server: server, dataProtection: dp)
             q[kSecReturnData as String] = true
             q[kSecMatchLimit as String] = kSecMatchLimitOne
             var out: CFTypeRef?
-            let st = SecItemCopyMatching(q as CFDictionary, &out)
-            if st == errSecSuccess { found = out as? Data }
-            return st
+            if SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,
+               let data = out as? Data {
+                return String(data: data, encoding: .utf8)
+            }
         }
-        guard let data = found else { return nil }
+        guard let data = try? Data(contentsOf: fileURL(server: server)) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
@@ -78,6 +95,9 @@ public struct TokenStore: Sendable {
             if SecItemDelete(query(server: server, dataProtection: dp) as CFDictionary) == errSecSuccess {
                 removed = true
             }
+        }
+        if (try? FileManager.default.removeItem(at: fileURL(server: server))) != nil {
+            removed = true
         }
         return removed
     }

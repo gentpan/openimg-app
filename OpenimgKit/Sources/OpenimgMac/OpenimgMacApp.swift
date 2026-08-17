@@ -287,6 +287,16 @@ struct Sidebar: View {
                                 .font(.caption2).foregroundStyle(.secondary)
                         }
                     }
+                    Spacer(minLength: 4)
+                    Button {
+                        model.signOut()
+                    } label: {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("退出登录（仅移除本机令牌）")
                 }
                 if let q = model.quota, q.quotaBytes > 0 {
                     GeometryReader { geo in
