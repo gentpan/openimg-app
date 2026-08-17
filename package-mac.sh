@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Wraps the OpenimgMac executable in a real .app bundle.
+# Wraps the OpenimgMac build product in a real Openimg.app bundle.
+# (SwiftPM 目标名保留 OpenimgMac 以区分未来的 iOS 端;用户可见的名字一律 Openimg。)
 #
 # A bare SwiftPM executable does not work for this app, and the failure is
 # quiet: MenuBarExtra has nowhere to install a status item without a bundle, so
@@ -32,7 +33,7 @@ fi
 CONFIG=${1:-debug}
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG="$ROOT/OpenimgKit"
-APP="$ROOT/build/OpenimgMac.app"
+APP="$ROOT/build/Openimg.app"
 
 echo "构建 ($CONFIG)…"
 xcrun swift build --package-path "$PKG" -c "$CONFIG" --product OpenimgMac >/dev/null
@@ -41,7 +42,7 @@ BIN="$(xcrun swift build --package-path "$PKG" -c "$CONFIG" --show-bin-path)/Ope
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/OpenimgMac"
+cp "$BIN" "$APP/Contents/MacOS/Openimg"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 # Ubuntu, registered at launch by BrandFont. Flat in Resources because
 # Bundle.main.url(forResource:) does not search subdirectories.
@@ -57,7 +58,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleExecutable</key>          <string>OpenimgMac</string>
+  <key>CFBundleExecutable</key>          <string>Openimg</string>
   <key>CFBundleIdentifier</key>          <string>io.openimg.mac</string>
   <key>CFBundleName</key>                <string>Openimg</string>
   <key>CFBundleDisplayName</key>         <string>Openimg</string>
@@ -111,4 +112,4 @@ echo "已打包：$APP"
 codesign -dv "$APP" 2>&1 | grep -E "Identifier|Signature|TeamIdentifier" | sed 's/^/  /'
 echo
 echo "运行：open '$APP'"
-echo "退出：pkill -x OpenimgMac"
+echo "退出：pkill -x Openimg"

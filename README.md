@@ -10,13 +10,13 @@
 ## 下载安装
 
 从 [Releases](https://github.com/gentpan/openimg-app/releases) 下载
-`OpenimgMac.zip`，解压后把 `OpenimgMac.app` 拖进「应用程序」。
+`Openimg.zip`，解压后把 `Openimg.app` 拖进「应用程序」。
 
 当前版本为 ad-hoc 签名（尚未公证），首次打开会被 Gatekeeper 拦截：
 **右键点击 App → 打开 → 再点「打开」**，只需一次。或者在终端执行：
 
 ```bash
-xattr -d com.apple.quarantine /Applications/OpenimgMac.app
+xattr -d com.apple.quarantine /Applications/Openimg.app
 ```
 
 需要 macOS 14 及以上（Apple silicon 与 Intel 均可，Release 产物按打包机架构）。
@@ -46,7 +46,7 @@ OpenimgKit/
 ```bash
 cd OpenimgKit && swift run KitCheck     # 自检
 ./package-mac.sh release                # 打包 .app
-open build/OpenimgMac.app
+open build/Openimg.app
 ```
 
 **不要用 `swift run OpenimgMac`。** 裸可执行文件没有 bundle，SwiftUI 找不到需要

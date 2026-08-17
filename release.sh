@@ -25,10 +25,10 @@ xcrun notarytool history --keychain-profile openimg-notary >/dev/null 2>&1 \
 
 echo "1/5 打包(签名:$IDENTITY)…"
 SIGN_IDENTITY="$IDENTITY" ./package-mac.sh release >/dev/null
-APP="$ROOT/build/OpenimgMac.app"
+APP="$ROOT/build/Openimg.app"
 
 echo "2/5 压缩并提交公证…"
-ZIP="$ROOT/build/OpenimgMac-$VERSION.zip"
+ZIP="$ROOT/build/Openimg-$VERSION.zip"
 rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
 xcrun notarytool submit "$ZIP" --keychain-profile openimg-notary --wait \

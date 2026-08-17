@@ -21,7 +21,7 @@ jobs:
       - name: 打包
         run: ./package-mac.sh release
       - name: 压缩
-        run: ditto -c -k --keepParent build/OpenimgMac.app OpenimgMac.zip
+        run: ditto -c -k --keepParent build/Openimg.app Openimg.zip
       - name: 发布
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -32,6 +32,6 @@ jobs:
             echo "release 已存在(签名发布),跳过 ad-hoc 产物"
             exit 0
           fi
-          gh release create "${GITHUB_REF_NAME}" OpenimgMac.zip \
+          gh release create "${GITHUB_REF_NAME}" Openimg.zip \
             --title "${GITHUB_REF_NAME}" \
             --notes "ad-hoc 签名构建。首次打开:右键 App → 打开 → 再点「打开」;或 \`xattr -d com.apple.quarantine\` 解除隔离。"
