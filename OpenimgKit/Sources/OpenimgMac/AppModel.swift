@@ -6,7 +6,9 @@ import OpenimgKit
 /// Trailing underscore because `Section` is a SwiftUI type and shadowing it
 /// makes every `Section { }` in a List fail to resolve.
 enum Section_: String, CaseIterable, Identifiable, Hashable {
-    case overview, gallery, upload, generate, editor, settings
+    /// 「修图」紧挨着「生成」:两件事同一套额度、同一条轮询、同一个上游模型,
+    /// 区别只在于有没有原图。中间隔着别的分区会让它们看起来毫不相干。
+    case overview, gallery, upload, generate, retouch, editor, settings
     var id: String { rawValue }
     /// 显示名归 nav 分区管——侧栏、顶栏、这里都取同一份,不各写各的。
     var label: String { L.s.nav.section(self) }
@@ -16,6 +18,7 @@ enum Section_: String, CaseIterable, Identifiable, Hashable {
         case .gallery: "square.grid.2x2"
         case .upload: "arrow.up.circle"
         case .generate: "sparkles"
+        case .retouch: "wand.and.stars"
         case .editor: "crop"
         case .settings: "gearshape"
         }
@@ -30,10 +33,15 @@ enum Section_: String, CaseIterable, Identifiable, Hashable {
         case .gallery: "square.grid.2x2.fill"
         case .upload: "arrow.up.circle.fill"
         case .generate: "sparkles.rectangle.stack"
+        case .retouch: "wand.and.stars.inverse"
         case .editor: "crop.rotate"
         case .settings: "gearshape.fill"
         }
     }
+
+    /// 这一行要不要 AI 才存在。见 AppModel.visibleSections——没配 key 的
+    /// 部署里这两行整个不出现。
+    var needsAI: Bool { self == .generate || self == .retouch }
 }
 
 /// State for the whole app.
@@ -144,9 +152,22 @@ final class AppModel: ObservableObject {
     @Published var aiLoading = false
     /// 轮询任务。页面消失就取消——没人看着的时候没有理由每三秒问一次。
     var aiPollTask: Task<Void, Never>?
-    /// 生成页是不是还在屏幕上。轮询以它为总闸:提交与页面离开可以同时发生
-    /// (点完「生成」立刻切走),光靠 onDisappear 取消拦不住那之后才起的那一轮。
-    var aiViewVisible = false
+    // AI 修图(实现在 RetouchModel.swift)。与生成共用额度、历史与轮询,
+    // 独有的只有「原图」这件事——图早就在图床里,选的是 id 不是本地文件。
+    @Published var retouchPrompt = ""
+    /// 选中的原图,按选择顺序。存整个对象而不是 id:缩略图要立刻画出来,而
+    /// 图库翻页后 `images` 里就没有它了。
+    @Published var retouchSources: [RemoteImage] = []
+    /// 空串表示「跟随原图」——那时请求里整个不带这个键,上游按原图尺寸出图。
+    @Published var retouchSize = ""
+    @Published var retouchResolution = ""
+    @Published var retouchSubmitting = false
+    /// 选图面板的开关与它自己那份图库快照。不复用 `images`:那是图库页当前
+    /// 停在的一页,借来搜索会把用户翻到一半的位置冲掉。
+    @Published var retouchPicking = false
+    @Published var retouchLibrary: [RemoteImage] = []
+    @Published var retouchSearch = ""
+    @Published var retouchLibraryLoading = false
 
     // 上传前编辑(实现在 EditorSheet.swift)
     @Published var editTarget: EditTarget?
@@ -529,7 +550,7 @@ final class AppModel: ObservableObject {
         switch section {
         case .gallery: await load()
         case .overview: await loadStats()
-        case .generate:
+        case .generate, .retouch:
             await aiLoadStatus()
             await aiRefresh()
         case .upload, .editor, .settings:

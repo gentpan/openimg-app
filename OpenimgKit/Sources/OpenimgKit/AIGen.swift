@@ -67,6 +67,22 @@ public enum AIGenStatus: String, Codable, Sendable, Hashable {
     }
 }
 
+/// 这条记录是凭空生成的,还是照着已有的图改出来的。
+///
+/// 两件事共用一张表、一套额度、一条轮询路径,只有这个字段把它们分开——界面
+/// 靠它把「生成」和「修图」两页的历史各归各页。
+public enum AIGenKind: String, Codable, Sendable, Hashable {
+    case generate, edit
+
+    /// 认不出就算文生图。功能上线前的存量记录 kind 是空字符串(后端不写迁移
+    /// 脚本改历史),而那批记录只可能是文生图;把空值当成未知而让整页解析失败,
+    /// 换来的是一个「历史突然全没了」的界面。
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = AIGenKind(rawValue: raw) ?? .generate
+    }
+}
+
 /// 一次生成的全过程记录。
 ///
 /// `imageID` 只在 completed 后才有,对应的图片在 `AIGenerationPage.images`
@@ -84,12 +100,41 @@ public struct AIGeneration: Decodable, Sendable, Identifiable, Hashable {
     public let credits: Int
     public let createdAt: Date
     public let doneAt: Date?
+    public let kind: AIGenKind
+    /// 这次修图用的原图 id,按提交时的顺序。后端存成逗号分隔的一串;拆开的
+    /// 活放在这里做一次,不然每个调用点都要重写同一段 split。纯生成时为空。
+    public let sourceIDs: [String]
+
+    public var isEdit: Bool { kind == .edit }
 
     enum CodingKeys: String, CodingKey {
-        case id, prompt, model, size, resolution, status, error, credits
+        case id, prompt, model, size, resolution, status, error, credits, kind
         case imageID = "image_id"
         case createdAt = "created_at"
         case doneAt = "done_at"
+        case sourceIDs = "source_ids"
+    }
+
+    /// 手写而不是让编译器合成:`kind` 与 `source_ids` 在老服务器上根本不存在,
+    /// 合成的实现遇到缺键会整条抛错,于是"连上一个旧实例"的症状会是历史全空。
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        prompt = try c.decode(String.self, forKey: .prompt)
+        model = try c.decode(String.self, forKey: .model)
+        size = try c.decode(String.self, forKey: .size)
+        resolution = try c.decode(String.self, forKey: .resolution)
+        status = try c.decode(AIGenStatus.self, forKey: .status)
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+        imageID = try c.decodeIfPresent(String.self, forKey: .imageID)
+        credits = try c.decode(Int.self, forKey: .credits)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        doneAt = try c.decodeIfPresent(Date.self, forKey: .doneAt)
+        kind = try c.decodeIfPresent(AIGenKind.self, forKey: .kind) ?? .generate
+        let raw = try c.decodeIfPresent(String.self, forKey: .sourceIDs) ?? ""
+        sourceIDs = raw.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 }
 
@@ -111,6 +156,15 @@ public struct AIGenerationPage: Decodable, Sendable {
     public func image(for gen: AIGeneration) -> RemoteImage? {
         gen.imageID.flatMap { images[$0] }
     }
+
+    /// 修图记录的原图。
+    ///
+    /// 只解析这份 map 里真有的 id:原图是图库里的普通图片,可能早在这条记录
+    /// 之后被删了。取不到的直接跳过而不是留空位——一行缩略图里夹着灰块,看
+    /// 起来像加载失败,而事实是那张图不在了。
+    public func sources(for gen: AIGeneration) -> [RemoteImage] {
+        gen.sourceIDs.compactMap { images[$0] }
+    }
 }
 
 /// 提交失败的几种结局。
@@ -125,6 +179,12 @@ public enum AIGenError: Error, LocalizedError, Equatable, Sendable {
     case dailyLimit(String)
     case monthlyExhausted(String)
     case badPrompt(String)
+    /// 一张原图都没给。界面本该拦住(没选图时提交按钮是灰的),留着是为了
+    /// 万一——服务器说不行的时候,得说得出是哪儿不行。
+    case noSource(String)
+    /// 给的原图不存在,或者不属于这个账号。多半是选好图之后又在图库里把它
+    /// 删了,所以文案要指向"重新选一张",而不是"稍后重试"。
+    case sourceMissing(String)
     case upstream(String)
     case other(status: Int, message: String)
 
@@ -132,7 +192,8 @@ public enum AIGenError: Error, LocalizedError, Equatable, Sendable {
     public var serverMessage: String {
         switch self {
         case .disabled(let m), .notVerified(let m), .dailyLimit(let m),
-             .monthlyExhausted(let m), .badPrompt(let m), .upstream(let m):
+             .monthlyExhausted(let m), .badPrompt(let m), .upstream(let m),
+             .noSource(let m), .sourceMissing(let m):
             m
         case .other(_, let m):
             m
@@ -147,6 +208,8 @@ public enum AIGenError: Error, LocalizedError, Equatable, Sendable {
         case .dailyLimit: "今天的生成次数已用完"
         case .monthlyExhausted: "这个月的生成次数已用完"
         case .badPrompt: "描述为空或过长"
+        case .noSource: "至少要选一张原图"
+        case .sourceMissing: "选中的原图已经不在了"
         case .upstream: "上游生成服务暂时不可用"
         case .other(let status, _): "服务器返回 \(status)"
         }
@@ -155,10 +218,20 @@ public enum AIGenError: Error, LocalizedError, Equatable, Sendable {
     static func from(status: Int, body: Data) -> AIGenError {
         let obj = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
         let message = obj["error"] as? String ?? ""
+        // code 是后端专门给机器看的标识,与 error 里那句已经翻译过的人话分开。
+        // 早先这里是拿 message 去 contains 匹配的,那必然落空——用户是中文
+        // 界面时收到的是「至少要选一张图片」,里面没有任何 ASCII 标识。
+        let code = obj["code"] as? String ?? ""
         return switch status {
-        case 400: .badPrompt(message)
+        // 400 在修图这条路上有三种意思(描述空、描述太长、没给图),状态码分
+        // 不开,靠 code 区分。认不出就退回"描述有问题",那是 400 里最常见的
+        // 一种,也是没有 code 的旧后端唯一可能的意思。
+        case 400: code == "no_source" ? .noSource(message) : .badPrompt(message)
         case 402: .monthlyExhausted(message)
         case 403: .notVerified(message)
+        // 认 code 而不是只认状态码:一个没有修图接口的旧实例同样回 404,那时
+        // 说「原图不在了」是句凭空捏造的解释。
+        case 404 where code == "source_missing": .sourceMissing(message)
         case 429: .dailyLimit(message)
         case 502: .upstream(message)
         case 503: .disabled(message)
@@ -170,3 +243,8 @@ public enum AIGenError: Error, LocalizedError, Equatable, Sendable {
 /// 描述的长度上限,与后端 `handleAIGenerate` 里的那道闸门一致。本地先拦,
 /// 免得白跑一趟——按字符数(rune)算,不是字节数。
 public let aiPromptLimit = 1000
+
+/// 一次修图最多带几张原图。上游本身收得下 16 张,这里的 4 是后端接口定下的
+/// 上限;本地先拦是为了让「加图」按钮在第 4 张之后就消失,而不是让人选到第
+/// 5 张再被 400 打回来。
+public let aiEditSourceLimit = 4

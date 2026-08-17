@@ -74,6 +74,7 @@ struct RootView: View {
                 case .gallery:  GalleryView(model: model)
                 case .upload:   UploadView(model: model)
                 case .generate: GenerateView(model: model)
+                case .retouch:  RetouchView(model: model)
                 case .editor:   EditorPage(model: model)
                 case .settings: SettingsView(model: model)
                 }
@@ -221,15 +222,18 @@ struct Sidebar: View {
                 .padding(.horizontal, 10)
                 .padding(.bottom, 10)
 
-            // visibleSections 而不是 allCases:没配 AI 的部署里「生成」整行
-            // 不存在,而不是灰着。见 AppModel.visibleSections。
+            // visibleSections 而不是 allCases:没配 AI 的部署里「生成」和
+            // 「修图」整行不存在,而不是灰着。见 AppModel.visibleSections。
             VStack(spacing: 4) {
                 ForEach(model.visibleSections) { s in
                     SidebarRow(
                         section: s,
                         active: model.section == s,
+                        // 转圈按种类分:两页共用一张历史表,不分开的话在修图
+                        // 时「生成」那行也会跟着转,像是自己动了起来。
                         busy: (s == .upload && model.uploading)
-                            || (s == .generate && model.aiPending)
+                            || (s == .generate && model.aiPendingText)
+                            || (s == .retouch && model.aiPendingEdit)
                     ) { model.section = s }
                 }
             }

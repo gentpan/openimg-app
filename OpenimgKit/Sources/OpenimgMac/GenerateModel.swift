@@ -1,27 +1,51 @@
 import Foundation
 import OpenimgKit
 
-/// 文生图的状态机。
+/// 文生图的状态机,顺带是修图的那一半。
 ///
 /// 生成是异步的:提交只换回一条 pending 记录,图要等上游几十秒。所以这里的
 /// 核心是一个轮询循环——每三秒问一次 `/api/ai/generations`,直到没有在途的
 /// 记录为止,页面一消失就取消。没人看着的时候不该有请求在跑。
+///
+/// 修图(RetouchModel.swift)与这里共用额度、历史与这一条轮询:后端把两件事
+/// 记在同一张表里,一次请求就把两页要的数据都取回来了,再起一个定时器只会让
+/// 同一份数据被问两遍。那边只写它独有的部分——原图。
 extension AppModel {
 
     // MARK: - 派生状态
 
     var aiEnabled: Bool { aiStatus?.enabled == true }
 
-    /// 侧栏该显示哪几行。没配 APIMART_API_KEY 的部署里,「生成」不是灰的,
-    /// 是不存在的——给一个点不动的入口等于承诺了一件做不到的事。
+    /// 侧栏该显示哪几行。没配 APIMART_API_KEY 的部署里,「生成」和「修图」
+    /// 不是灰的,是不存在的——给一个点不动的入口等于承诺了一件做不到的事。
     var visibleSections: [Section_] {
-        Section_.allCases.filter { $0 != .generate || aiEnabled }
+        Section_.allCases.filter { !$0.needsAI || aiEnabled }
     }
 
     var aiRemaining: Int { aiStatus?.remaining ?? 0 }
 
+    /// 有没有一页 AI 界面正在屏幕上。轮询以它为总闸。
+    ///
+    /// 直接读 `section` 而不是让两个页面各自置位一个标志:SwiftUI 不保证旧页
+    /// 的 onDisappear 一定跑在新页的 task 之前,而生成与修图之间是可以直接互
+    /// 切的——顺序反过来的那一次,刚立起的标志会被上一页放倒,轮询就此停在
+    /// 一个正看着的页面上。它同时还挡住了另一件事:提交是异步的,点完按钮立
+    /// 刻切走时,`aiPollStart` 在离开之后才执行,那时 section 已经不是这两页
+    /// 中的任何一个了。
+    var aiViewVisible: Bool { section.needsAI }
+
     /// 还有没有没跑完的记录。轮询的开关就看它。
     var aiPending: Bool { aiGenerations.contains { !$0.status.isTerminal } }
+
+    /// 历史按种类分给两页。同一张表、同一次请求,只是各看各的那一半——修图
+    /// 记录混在文生图的列表里,那句「用这句再生成」会丢掉原图,重来一次得到
+    /// 的是另一件事。
+    var aiTextGenerations: [AIGeneration] { aiGenerations.filter { !$0.isEdit } }
+    var aiEditGenerations: [AIGeneration] { aiGenerations.filter(\.isEdit) }
+
+    /// 侧栏那两行各自的转圈:哪一页有在途的,才在哪一行转。
+    var aiPendingText: Bool { aiTextGenerations.contains { !$0.status.isTerminal } }
+    var aiPendingEdit: Bool { aiEditGenerations.contains { !$0.status.isTerminal } }
 
     /// 服务器给的可选值;拿不到就退回一个能用的最小集,免得界面空掉。
     var aiSizes: [String] {
@@ -61,15 +85,11 @@ extension AppModel {
         }
         // 功能被关掉时(自建实例撤掉了 key),别把用户留在一个已经不存在的
         // 页面上。
-        if !s.enabled, section == .generate { section = .overview }
+        if !s.enabled, section.needsAI { section = .overview }
     }
 
-    /// 进入生成页。
-    ///
-    /// 可见性是轮询的总闸,所以第一件事就是把它立起来;`aiViewDisappeared`
-    /// 负责放倒。
+    /// 进入生成页或修图页。两页共用同一条轮询,进出也就共用这一对方法。
     func aiViewAppeared() async {
-        aiViewVisible = true
         await aiLoadStatus()
         // 列表为空说明这是本会话头一回进来,那一刻看到的「已完成」全是历史,
         // 不该为它们弹提示。再次回到这一页时列表还留着上次的样子,谁是趁我
@@ -77,9 +97,13 @@ extension AppModel {
         await aiRefresh(settling: aiGenerations.isEmpty)
     }
 
-    /// 离开生成页。没人看着的时候不该有请求在跑。
+    /// 离开生成页或修图页。没人看着的时候不该有请求在跑。
+    ///
+    /// 「离开」不等于「这一页消失了」:从生成切到修图时,消失的那一页交出的
+    /// 是接力棒而不是终点——另一页正等着同一条轮询。所以只在两页都不在时才
+    /// 真的停。
     func aiViewDisappeared() {
-        aiViewVisible = false
+        guard !section.needsAI else { return }
         aiPollStop()
     }
 
@@ -108,15 +132,19 @@ extension AppModel {
 
         // 有记录落地了:余额变了(失败会退还),图库多了张图。
         await aiLoadStatus()
-        if justFinished.contains(where: { $0.status == .completed }) {
+        // 落地的是哪一件事就说哪一句。同一条轮询喂两页,一句「生成完成」用在
+        // 修图上会让人以为凭空多出了一张图,而用户刚做的是改一张已有的。
+        if let done = justFinished.first(where: { $0.status == .completed }) {
             quota = try? await c.quota()
             // 与上传后一样刷新图库:那张图现在就在库里,列表停在旧的一页
             // 只会让人以为没存进去。
             await load(resetPage: true)
-            announce(L.s.generate.doneToast)
+            announce(done.isEdit ? L.s.retouch.doneToast : L.s.generate.doneToast)
         }
         if let failed = justFinished.first(where: { $0.status == .failed }) {
-            announce(L.s.generate.failedToast(failed.error ?? L.s.common.failed), seconds: 8)
+            let reason = failed.error ?? L.s.common.failed
+            announce(failed.isEdit ? L.s.retouch.failedToast(reason)
+                                   : L.s.generate.failedToast(reason), seconds: 8)
         }
     }
 
@@ -196,6 +224,7 @@ extension AppModel {
         aiGenerations = []
         aiImages = [:]
         aiSubmitting = false
+        retouchReset()
     }
 
     // MARK: - 文案
@@ -213,6 +242,10 @@ extension AppModel {
         case .dailyLimit: L.s.generate.errDailyLimit
         case .monthlyExhausted: L.s.generate.errMonthlyExhausted
         case .badPrompt: L.s.generate.errBadPrompt(aiPromptLimit)
+        // 这两种只可能来自修图那条路,措辞也归它:一个是没选图,一个是选中的
+        // 原图已经被删了,两句都要指向「回去选图」而不是「稍后重试」。
+        case .noSource: L.s.retouch.errNoSource
+        case .sourceMissing: L.s.retouch.errSourceMissing
         case .upstream(let m): L.s.generate.errUpstream(m)
         case .other: e.errorDescription ?? L.s.common.failed
         }

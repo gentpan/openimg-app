@@ -10,6 +10,8 @@ struct NavStrings: Sendable {
     let upload: String
     /// 「生成」这一行只在部署配了 AI 时出现,见 AppModel.visibleSections。
     let generate: String
+    /// 「修图」同上——同一个开关管着这两行。
+    let retouch: String
     let editor: String
     let settings: String
 
@@ -37,6 +39,7 @@ extension NavStrings {
         case .gallery: gallery
         case .upload: upload
         case .generate: generate
+        case .retouch: retouch
         case .editor: editor
         case .settings: settings
         }
@@ -47,6 +50,7 @@ extension NavStrings {
         gallery: "图库",
         upload: "上传",
         generate: "生成",
+        retouch: "修图",
         editor: "编辑",
         settings: "设置",
         uploadImages: "上传图片…",
@@ -63,6 +67,7 @@ extension NavStrings {
         gallery: "Gallery",
         upload: "Upload",
         generate: "Generate",
+        retouch: "Retouch",
         editor: "Edit",
         settings: "Settings",
         uploadImages: "Upload Images…",

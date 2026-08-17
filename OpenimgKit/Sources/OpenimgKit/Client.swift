@@ -428,19 +428,43 @@ public struct OpenimgClient: Sendable {
     /// 递交一次生成。立刻返回,不等图——回来的记录 status 是 pending,
     /// 之后靠 `aiGenerations()` 轮出终态。
     public func aiGenerate(prompt: String, size: String, resolution: String) async throws -> AIGeneration {
-        var req = request("POST", "api/ai/generate")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: [
+        try await submitAI("api/ai/generate", [
             "prompt": prompt, "size": size, "resolution": resolution,
         ])
+    }
+
+    /// 递交一次修图:一句描述加上 1~4 张图库里的图。
+    ///
+    /// 只传图片 id。后端换成公开 CDN 地址交给上游,全程没有一份图片字节经过
+    /// 本机——那些图早就在服务器上了,下载下来再传回去只是白白多一趟几兆的
+    /// 往返。
+    ///
+    /// `size`/`resolution` 留空就整个不发这个键:上游在没收到尺寸时按原图出
+    /// 图,而这正是「照原样改」想要的。发一个空字符串是另一回事——那是让后端
+    /// 去猜一个用户没表达过的意思。
+    public func aiEdit(
+        prompt: String, imageIDs: [String], size: String? = nil, resolution: String? = nil
+    ) async throws -> AIGeneration {
+        var body: [String: Any] = ["prompt": prompt, "image_ids": imageIDs]
+        if let size, !size.isEmpty { body["size"] = size }
+        if let resolution, !resolution.isEmpty { body["resolution"] = resolution }
+        return try await submitAI("api/ai/edit", body)
+    }
+
+    /// 两个提交口共用的那一段:同样的错误语义,同样的 `{"generation": …}`。
+    private func submitAI(_ path: String, _ body: [String: Any]) async throws -> AIGeneration {
+        var req = request("POST", path)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, resp) = try await session.data(for: req)
         // 这几个自己认,不走 `failure`:那张表是按上传的语义写的,会把这里的
         // 429(今日次数用完,明天才有)说成「上传过于频繁,请 60 秒后再试」。
-        // 其余的仍交给通用映射——令牌过期该说令牌过期,而不是「服务器返回
+        // 404 同理——在这条路上它不是「接口不存在」,而是「那张原图不在了」。
+        // 其余的仍交给通用映射:令牌过期该说令牌过期,而不是「服务器返回
         // 401」这种既不解释也不给出路的话。
         if let http = resp as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             switch http.statusCode {
-            case 400, 402, 403, 429, 502, 503:
+            case 400, 402, 403, 404, 429, 502, 503:
                 throw AIGenError.from(status: http.statusCode, body: data)
             default:
                 throw Self.failure(status: http.statusCode, body: data, headers: http)

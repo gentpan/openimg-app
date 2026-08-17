@@ -20,6 +20,7 @@ struct Strings: Sendable {
     var gallery: GalleryStrings
     var upload: UploadStrings
     var generate: GenerateStrings
+    var retouch: RetouchStrings
     var editor: EditorStrings
     var settings: SettingsStrings
     var watch: WatchStrings
@@ -27,11 +28,13 @@ struct Strings: Sendable {
 
     static let zh = Strings(
         common: .zh, nav: .zh, login: .zh, overview: .zh, gallery: .zh,
-        upload: .zh, generate: .zh, editor: .zh, settings: .zh, watch: .zh, errors: .zh)
+        upload: .zh, generate: .zh, retouch: .zh, editor: .zh, settings: .zh,
+        watch: .zh, errors: .zh)
 
     static let en = Strings(
         common: .en, nav: .en, login: .en, overview: .en, gallery: .en,
-        upload: .en, generate: .en, editor: .en, settings: .en, watch: .en, errors: .en)
+        upload: .en, generate: .en, retouch: .en, editor: .en, settings: .en,
+        watch: .en, errors: .en)
 }
 
 /// 界面语言。默认跟随系统:简体中文环境用中文,其余用英文——和网页端
