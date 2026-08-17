@@ -161,13 +161,17 @@ struct UploadView: View {
     /// every client, so it belongs where account preferences live; what belongs
     /// here is knowing what it is currently set to.
     private var settingsHint: some View {
-        HStack(spacing: 6) {
-            Text(L.s.settings.modeLabel(model.uploadMode))
-            Text("·").foregroundStyle(.quaternary)
-            Text(L.s.settings.variantLabel(model.variantFormat))
-            if model.maxImageWidth > 0 {
+        // 当前设置是一串值,「在设置里改」是一个动作——中间隔开,否则末尾那
+        // 项和链接只差 6pt 又没有分隔点,会连读成一句话("WebP 在设置里改")。
+        HStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Text(L.s.settings.modeLabel(model.uploadMode))
                 Text("·").foregroundStyle(.quaternary)
-                Text(L.s.upload.maxWidth(model.maxImageWidth))
+                Text(L.s.settings.variantLabel(model.variantFormat))
+                if model.maxImageWidth > 0 {
+                    Text("·").foregroundStyle(.quaternary)
+                    Text(L.s.upload.maxWidth(model.maxImageWidth))
+                }
             }
             Button(L.s.upload.changeInSettings) { model.section = .settings }
                 .buttonStyle(LinkButton())
