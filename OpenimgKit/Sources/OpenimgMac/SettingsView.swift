@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 import OpenimgKit
 
 struct SettingsView: View {
@@ -13,6 +14,8 @@ struct SettingsView: View {
     @State private var newPassword = ""
     @State private var pkCode = ""
     @State private var pkName = ""
+    @State private var avatarHover = false
+    @State private var avatarDropping = false
     @FocusState private var nameFocused: Bool
 
     var body: some View {
@@ -78,26 +81,67 @@ struct SettingsView: View {
         }
     }
 
-    /// The picture doubles as its own button: hovering reveals the actions over
-    /// it, so the card does not carry two buttons for something most people
-    /// set once.
+    /// 头像本体就是入口:点击选图、悬浮显相机、把图片拖上来直接换——
+    /// 下面的文字链接保留,给不喜欢猜交互的人一条明路。
     private func avatarWell(_ a: Account) -> some View {
         VStack(spacing: 6) {
-            Avatar(account: a, size: 62, client: try? model.client())
-                .overlay(
-                    Circle().strokeBorder(.white.opacity(0.12), lineWidth: 1)
-                )
+            Button {
+                Task { await model.pickAvatar() }
+            } label: {
+                Avatar(account: a, size: 62, client: try? model.client())
+                    .overlay(
+                        Circle().strokeBorder(
+                            avatarDropping ? Color.brand : .white.opacity(0.12),
+                            lineWidth: avatarDropping ? 2 : 1)
+                    )
+                    .overlay {
+                        if avatarHover || avatarDropping {
+                            Circle().fill(.black.opacity(0.45))
+                            Image(systemName: avatarDropping ? "arrow.down.circle.fill" : "camera.fill")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.white)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+            .onHover { avatarHover = $0 }
+            .animation(.easeOut(duration: 0.12), value: avatarHover || avatarDropping)
+            .help("点击或拖入图片更换头像")
+            .onDrop(of: [.fileURL], isTargeted: $avatarDropping) { providers in
+                Task {
+                    if let url = await Self.firstFileURL(from: providers) {
+                        await model.setAvatar(url)
+                    }
+                }
+                return true
+            }
             HStack(spacing: 4) {
                 Button("更换") { Task { await model.pickAvatar() } }
-                    .buttonStyle(LinkButton()).font(.caption2)
+                    .buttonStyle(LinkButton()).font(.caption)
                 if a.avatarURL?.isEmpty == false {
-                    Text("·").font(.caption2).foregroundStyle(.quaternary)
+                    Text("·").font(.caption).foregroundStyle(.quaternary)
                     Button("移除") { Task { await model.removeAvatar() } }
-                        .buttonStyle(LinkButton()).font(.caption2)
+                        .buttonStyle(LinkButton()).font(.caption)
                 }
             }
             .disabled(model.busy)
         }
+    }
+
+    /// 与 UploadView 同款的拖放解码(completion 版接口,规避 async loadItem
+    /// 返回类型在正式版 SDK 严格并发下不可跨界的问题)。
+    private static func firstFileURL(from providers: [NSItemProvider]) async -> URL? {
+        for p in providers {
+            let data: Data? = await withCheckedContinuation { cont in
+                _ = p.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
+                    cont.resume(returning: data)
+                }
+            }
+            if let data, let url = URL(dataRepresentation: data, relativeTo: nil) {
+                return url
+            }
+        }
+        return nil
     }
 
     /// Commits on Return and on losing focus, and reverts on Escape.

@@ -795,6 +795,12 @@ final class AppModel: ObservableObject {
     }
 
     func setAvatar(_ url: URL) async {
+        // 服务器上限 8 MB(最终会压成 256px AVIF),本地先拦免得白传一趟
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        if size > 8 << 20 {
+            announce("头像图片超过 8 MB，请换小一点的")
+            return
+        }
         busy = true
         defer { busy = false }
         do {
