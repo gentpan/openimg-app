@@ -1,6 +1,5 @@
 import SwiftUI
 import OpenimgKit
-import UniformTypeIdentifiers
 
 struct UploadView: View {
     @ObservedObject var model: AppModel
@@ -52,7 +51,7 @@ struct UploadView: View {
                 // Dropped folders expand the same way a picked one does.
                 // handleDrop 里再分流:开了"单张先编辑"且恰好一张静态图时
                 // 进编辑器,其余直接上传。
-                Task { await model.handleDrop(await urls(from: providers)) }
+                Task { await model.handleDrop(await DroppedFiles.urls(from: providers)) }
                 return true
             }
             .animation(.easeOut(duration: 0.15), value: model.dropping)
@@ -212,25 +211,6 @@ struct UploadView: View {
         }
     }
 
-    /// NSItemProvider returns a file URL as its Data representation; decoding it
-    /// any other way silently yields nil for every drop.
-    ///
-    /// 用 completion 版接口而不是 async 的 loadItem:后者返回
-    /// `any NSSecureCoding`,在正式版 SDK 的严格并发下不可跨界发送
-    /// (本机 beta 放行只是巧合)。Data 是 Sendable,包个 continuation 了事。
-    private func urls(from providers: [NSItemProvider]) async -> [URL] {
-        var out: [URL] = []
-        for p in providers {
-            let data: Data? = await withCheckedContinuation { cont in
-                _ = p.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
-                    cont.resume(returning: data)
-                }
-            }
-            guard let data, let url = URL(dataRepresentation: data, relativeTo: nil) else { continue }
-            out.append(url)
-        }
-        return out
-    }
 }
 
 // MARK: - Row

@@ -13,6 +13,17 @@ struct GenerateStrings: Sendable {
     let promptCounter: @Sendable (Int, Int) -> String
     let promptTooLong: @Sendable (Int) -> String
 
+    // 参考图(可选)
+    let refLabel: String
+    /// 一张都没给时的一句话。它要同时说清「可以不给」和「给了会怎样」——
+    /// 没有它,那一行看起来像是漏填了什么。
+    let refHint: String
+    /// 带参考图提交后的播报。结果记在修图那张历史表里(它走的就是修图那条
+    /// 接口),不说清楚的话用户会在「最近生成」里等一张永远不来的图。
+    let refSubmitted: String
+    /// 提交按钮的悬浮说明:有参考图时这一次干的是另一件事。
+    let refTakesAWhile: String
+
     // 参数
     let sizeLabel: String
     let resolutionLabel: String
@@ -71,6 +82,11 @@ extension GenerateStrings {
         promptCounter: { used, limit in "\(used) / \(limit)" },
         promptTooLong: { limit in "描述最多 \(limit) 字" },
 
+        refLabel: "参考图",
+        refHint: "可不给。给了就按这几张图来画",
+        refSubmitted: "已提交，带参考图的结果会出现在「修图」记录里",
+        refTakesAWhile: "按参考图出图，约需几十秒，期间可以去做别的",
+
         sizeLabel: "尺寸",
         resolutionLabel: "清晰度",
         modelLabel: { name in "模型 \(name)" },
@@ -121,6 +137,11 @@ extension GenerateStrings {
         promptPlaceholder: "Describe the image you want — the more specific, the better",
         promptCounter: { used, limit in "\(used) / \(limit)" },
         promptTooLong: { limit in "\(limit) characters max" },
+
+        refLabel: "Reference",
+        refHint: "Optional — the result follows the images you add here",
+        refSubmitted: "Submitted — results with references appear under Retouch",
+        refTakesAWhile: "Follows your references — usually under a minute",
 
         sizeLabel: "Aspect Ratio",
         resolutionLabel: "Detail",

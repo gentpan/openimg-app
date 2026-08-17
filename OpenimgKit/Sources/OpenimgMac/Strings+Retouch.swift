@@ -10,30 +10,16 @@ struct RetouchPreset: Identifiable, Hashable, Sendable {
     let prompt: String
 }
 
-/// 修图分区:选原图、写要改什么、看历史。
+/// 修图分区:写要改什么、看历史。
 ///
-/// 与生成分区共用额度卡与状态词(那是同一套额度、同一条轮询),这里只写它
-/// 独有的那部分——「原图」这件事从头到尾都是生成页没有的。
+/// 与生成分区共用额度卡与状态词(那是同一套额度、同一条轮询);选图那一行
+/// 的措辞也已经共用了(见 AISourceStrings)——生成页加上参考图之后,那一行
+/// 两页长得一模一样,只剩「原图 / 参考图」这个称呼还是各自的。
 struct RetouchStrings: Sendable {
     // 原图
     let sourcesLabel: String
-    /// 输入区那条「最近上传」快捷条的小标。
-    let recentLabel: String
-    let addSource: String
-    let removeSource: String
-    /// 已选 / 上限。
-    let sourceCount: @Sendable (Int, Int) -> String
     /// 一张都没选时,按钮上的悬浮说明——按钮是灰的,得说清为什么。
     let needSource: String
-
-    // 选图面板
-    let pickTitle: String
-    /// 副标题写清能选几张。
-    let pickSubtitle: @Sendable (Int) -> String
-    let pickSearchPlaceholder: String
-    let pickEmpty: String
-    let pickLimitReached: @Sendable (Int) -> String
-    let pickDone: String
 
     // 预设
     let presetsLabel: String
@@ -77,18 +63,7 @@ struct RetouchStrings: Sendable {
 extension RetouchStrings {
     static let zh = RetouchStrings(
         sourcesLabel: "原图",
-        recentLabel: "最近上传",
-        addSource: "从图库选图",
-        removeSource: "移除这张",
-        sourceCount: { picked, limit in "\(picked) / \(limit)" },
-        needSource: "先从图库里选一张要改的图",
-
-        pickTitle: "从图库选图",
-        pickSubtitle: { limit in "最多选 \(limit) 张，再点一次可以取消选择" },
-        pickSearchPlaceholder: "搜索文件名",
-        pickEmpty: "没有找到图片",
-        pickLimitReached: { limit in "最多 \(limit) 张，先取消一张再选" },
-        pickDone: "完成",
+        needSource: "先选一张要改的图：从图库里选，或者直接传一张",
 
         presetsLabel: "常用",
         presets: [
@@ -125,18 +100,7 @@ extension RetouchStrings {
 
     static let en = RetouchStrings(
         sourcesLabel: "Source",
-        recentLabel: "Recent",
-        addSource: "Pick from Gallery",
-        removeSource: "Remove This One",
-        sourceCount: { picked, limit in "\(picked) / \(limit)" },
-        needSource: "Pick an image from your gallery first",
-
-        pickTitle: "Pick from Gallery",
-        pickSubtitle: { limit in "Up to \(limit) images — click again to deselect" },
-        pickSearchPlaceholder: "Search file names",
-        pickEmpty: "No images found",
-        pickLimitReached: { limit in "\(limit) at most — deselect one first" },
-        pickDone: "Done",
+        needSource: "Pick an image first — from your gallery, or upload one",
 
         presetsLabel: "Common",
         presets: [

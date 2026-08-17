@@ -4,7 +4,12 @@ import OpenimgKit
 
 /// 文生图页。
 ///
-/// 三段自下而上:写描述、看还剩几次、看历史。输入压在底部、结果堆在上方,
+/// 三段自下而上:写描述、看还剩几次、看历史。输入区顶上还有一行可选的参考
+/// 图——给了图就不再是凭空画,提交也就改走 `/api/ai/edit`(见 aiGenerate)。
+/// 那仍是同一个按钮:「有没有参考图」是用户已经用行动回答过的问题,再让他去
+/// 拨一个模式开关,等于问第二遍。
+///
+/// 输入压在底部、结果堆在上方,
 /// 是对话式的排布——刚生成的图出现在离视线最近的地方,而输入框始终在手边,
 /// 连着生成好几张时不必来回找。额度卡紧贴输入框上方:这是一件**次数有限**
 /// 的事,按下按钮之前就该知道还剩几次,以及用完之后是等明天还是去签到。
@@ -25,12 +30,23 @@ struct GenerateView: View {
         // 的出现与离开如实告诉 model——轮询以「页面在不在」为总闸。
         .task { await model.aiViewAppeared() }
         .onDisappear { model.aiViewDisappeared() }
+        // 选图面板与修图页共用一个(见 AISourceRow.swift),靠 slot 认篮子。
+        .sheet(item: $model.aiPicking) { slot in
+            AISourcePicker(model: model, slot: slot)
+        }
     }
 
     // MARK: - 输入
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // 参考图是可选的,所以空着时收成一行(compactWhenEmpty):一件可以
+            // 不做的事摆一个 64pt 高的虚线框,会把提示词框挤下去,也会让人以为
+            // 那是必填。给了图之后才展开成缩略图那一行。
+            AISourceRow(model: model, slot: .generate,
+                        label: L.s.generate.refLabel,
+                        compactWhenEmpty: true,
+                        emptyHint: L.s.generate.refHint)
             promptField
             optionRow(L.s.generate.sizeLabel, options: model.aiSizes,
                       label: { $0 }, selection: sizeBinding)
@@ -99,8 +115,15 @@ struct GenerateView: View {
         }
         .buttonStyle(BrandButton())
         .disabled(!model.aiCanSubmit)
-        .help(model.aiPromptTooLong ? L.s.generate.promptTooLong(aiPromptLimit)
-                                    : L.s.generate.takesAWhile)
+        .help(helpText)
+    }
+
+    /// 一个按钮,两条路。文案不跟着参考图变(那会让人以为自己切换了什么模式),
+    /// 只有悬浮说明如实交代这一次是按参考图出图。
+    private var helpText: String {
+        if model.aiPromptTooLong { return L.s.generate.promptTooLong(aiPromptLimit) }
+        return model.generateSources.isEmpty ? L.s.generate.takesAWhile
+                                             : L.s.generate.refTakesAWhile
     }
 
     private var sizeBinding: Binding<AIOption> {

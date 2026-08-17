@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import UniformTypeIdentifiers
 import OpenimgKit
 
 struct SettingsView: View {
@@ -122,7 +121,7 @@ struct SettingsView: View {
             .help(L.s.settings.avatarHelp)
             .onDrop(of: [.fileURL], isTargeted: $avatarDropping) { providers in
                 Task {
-                    if let url = await Self.firstFileURL(from: providers) {
+                    if let url = await DroppedFiles.firstURL(from: providers) {
                         await model.setAvatar(url)
                     }
                 }
@@ -139,22 +138,6 @@ struct SettingsView: View {
             }
             .disabled(model.busy)
         }
-    }
-
-    /// 与 UploadView 同款的拖放解码(completion 版接口,规避 async loadItem
-    /// 返回类型在正式版 SDK 严格并发下不可跨界的问题)。
-    private static func firstFileURL(from providers: [NSItemProvider]) async -> URL? {
-        for p in providers {
-            let data: Data? = await withCheckedContinuation { cont in
-                _ = p.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
-                    cont.resume(returning: data)
-                }
-            }
-            if let data, let url = URL(dataRepresentation: data, relativeTo: nil) {
-                return url
-            }
-        }
-        return nil
     }
 
     /// Commits on Return and on losing focus, and reverts on Escape.

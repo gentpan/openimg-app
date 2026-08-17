@@ -21,6 +21,9 @@ struct Strings: Sendable {
     var upload: UploadStrings
     var generate: GenerateStrings
     var retouch: RetouchStrings
+    /// 生成页与修图页共用的那一行「给几张图」。它不属于任何一页,所以自成
+    /// 一区——放进其中一页会让另一页去别人家里取词。
+    var aiSource: AISourceStrings
     var editor: EditorStrings
     var settings: SettingsStrings
     var watch: WatchStrings
@@ -28,13 +31,13 @@ struct Strings: Sendable {
 
     static let zh = Strings(
         common: .zh, nav: .zh, login: .zh, overview: .zh, gallery: .zh,
-        upload: .zh, generate: .zh, retouch: .zh, editor: .zh, settings: .zh,
-        watch: .zh, errors: .zh)
+        upload: .zh, generate: .zh, retouch: .zh, aiSource: .zh, editor: .zh,
+        settings: .zh, watch: .zh, errors: .zh)
 
     static let en = Strings(
         common: .en, nav: .en, login: .en, overview: .en, gallery: .en,
-        upload: .en, generate: .en, retouch: .en, editor: .en, settings: .en,
-        watch: .en, errors: .en)
+        upload: .en, generate: .en, retouch: .en, aiSource: .en, editor: .en,
+        settings: .en, watch: .en, errors: .en)
 }
 
 /// 界面语言。默认跟随系统:简体中文环境用中文,其余用英文——和网页端

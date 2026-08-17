@@ -40,7 +40,13 @@ extension AppModel {
     /// 历史按种类分给两页。同一张表、同一次请求,只是各看各的那一半——修图
     /// 记录混在文生图的列表里,那句「用这句再生成」会丢掉原图,重来一次得到
     /// 的是另一件事。
-    var aiTextGenerations: [AIGeneration] { aiGenerations.filter { !$0.isEdit } }
+    /// 生成页两种都看。
+    ///
+    /// 它现在也能带参考图,而带了参考图的提交在后端就是一条 edit 记录——只看
+    /// 文生图的话,用户在这一页按下按钮,结果却永远不出现在这一页,他会以为
+    /// 提交失败了。代价是修图页发的记录也列在这里,但行内本来就有「修图」
+    /// 徽章,读起来是通的。
+    var aiTextGenerations: [AIGeneration] { aiGenerations }
     var aiEditGenerations: [AIGeneration] { aiGenerations.filter(\.isEdit) }
 
     /// 侧栏那两行各自的转圈:哪一页有在途的,才在哪一行转。
@@ -150,14 +156,30 @@ extension AppModel {
 
     // MARK: - 提交
 
+    /// 生成页的提交。一个按钮,按有没有参考图分两条路。
+    ///
+    /// 没有参考图是 `/api/ai/generate`(凭空画一张);有参考图就是
+    /// `/api/ai/edit`——「按这几张图画」在后端本来就是同一件事,没有第三个
+    /// 接口,也不该为它做成两个模式开关让用户自己去选对。
     func aiGenerate() async {
         guard aiCanSubmit else { return }
         let prompt = aiPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let refs = generateSources
         aiSubmitting = true
         defer { aiSubmitting = false }
         do {
-            let gen = try await client().aiGenerate(
-                prompt: prompt, size: aiSize, resolution: aiResolution)
+            let gen: AIGeneration
+            if refs.isEmpty {
+                gen = try await client().aiGenerate(
+                    prompt: prompt, size: aiSize, resolution: aiResolution)
+            } else {
+                gen = try await client().aiEdit(
+                    prompt: prompt, imageIDs: refs.map(\.id),
+                    size: aiSize, resolution: aiResolution)
+                // 参考图先记进 aiImages,历史行才能立刻画出缩略图——响应里只有
+                // 这条记录本身,而图对象此刻就在手上。
+                for img in refs where aiImages[img.id] == nil { aiImages[img.id] = img }
+            }
             // 先插到列表最前面,不等下一轮轮询——提交后一秒内什么都不变的
             // 界面看起来就像没提交成功。落库发生在响应回来之前,所以正好卡在
             // 这一刻的那轮轮询可能已经把它取回来了;不查重就会得到两行同 id,
@@ -166,7 +188,10 @@ extension AppModel {
                 aiGenerations.insert(gen, at: 0)
             }
             await aiLoadStatus()
-            announce(L.s.generate.submitted)
+            // 带参考图的那条走的是修图接口,记录也就落在修图那半张表里,不会
+            // 出现在这一页的「最近生成」下面。所以这句话得指路——否则用户会
+            // 盯着本页等一张永远不来的图。
+            announce(refs.isEmpty ? L.s.generate.submitted : L.s.generate.refSubmitted)
             aiPollStart()
         } catch {
             announce(aiMessage(error))

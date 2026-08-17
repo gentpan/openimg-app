@@ -93,7 +93,14 @@ final class AppModel: ObservableObject {
     }
 
     // Navigation
-    @Published var section: Section_ = .gallery
+    @Published var section: Section_ = .gallery {
+        didSet {
+            // 换页就关掉选图面板。它记着"这些图往哪个篮子放",留着的话:在
+            // 生成页开了面板、切到修图页、面板带着 generate 这个身份重新弹
+            // 出来,选的图会落进上一页的篮子里——而用户看着的是这一页。
+            if oldValue != section, aiPicking != nil { aiPicking = nil }
+        }
+    }
     @Published var status = ""
     @Published var busy = false
 
@@ -152,24 +159,31 @@ final class AppModel: ObservableObject {
     @Published var aiLoading = false
     /// 轮询任务。页面消失就取消——没人看着的时候没有理由每三秒问一次。
     var aiPollTask: Task<Void, Never>?
-    // AI 修图(实现在 RetouchModel.swift)。与生成共用额度、历史与轮询,
-    // 独有的只有「原图」这件事——图早就在图床里,选的是 id 不是本地文件。
+    // AI 修图(实现在 RetouchModel.swift)。与生成共用额度、历史与轮询。
     @Published var retouchPrompt = ""
-    /// 选中的原图,按选择顺序。存整个对象而不是 id:缩略图要立刻画出来,而
-    /// 图库翻页后 `images` 里就没有它了。
-    @Published var retouchSources: [RemoteImage] = []
     /// 空串表示「跟随原图」——那时请求里整个不带这个键,上游按原图尺寸出图。
     @Published var retouchSize = ""
     @Published var retouchResolution = ""
     @Published var retouchSubmitting = false
-    /// 选图面板的开关与它自己那份图库快照。不复用 `images`:那是图库页当前
-    /// 停在的一页,借来搜索会把用户翻到一半的位置冲掉。
-    @Published var retouchPicking = false
-    @Published var retouchLibrary: [RemoteImage] = []
-    @Published var retouchSearch = ""
-    @Published var retouchLibraryLoading = false
+
+    // 给 AI 的那几张图(实现在 AISources.swift)。修图页叫「原图」、生成页叫
+    // 「参考图」,是同一件事:1~4 张**图库里**的图,提交时只发 id。存整个对象
+    // 而不是 id,是因为缩略图要立刻画出来,而图库翻页后 `images` 里就没有它了。
+    @Published var retouchSources: [RemoteImage] = []
+    @Published var generateSources: [RemoteImage] = []
+    /// 选图面板开给了哪一页;nil 就是没开。做成可选值而不是布尔,是因为两页
+    /// 共用同一个面板,面板得知道自己在往哪个篮子里放图。
+    @Published var aiPicking: AISourceSlot?
+    /// 面板自己那份图库快照。不复用 `images`:那是图库页当前停在的一页,借来
+    /// 搜索会把用户翻到一半的位置冲掉。一次只开一个面板,所以只有一份。
+    @Published var aiLibrary: [RemoteImage] = []
+    @Published var aiLibrarySearch = ""
+    @Published var aiLibraryLoading = false
     /// 选图面板还有没有下一页。翻到底就置假,免得空转。
-    @Published var retouchLibraryMore = true
+    @Published var aiLibraryMore = true
+    /// 从那一行直接传图的忙态。与 `uploading` 分开:上传页的队列是另一回事,
+    /// 而这一行要在原地转圈并挡住重复点击。
+    @Published var aiSourceUploading = false
 
     // 上传前编辑(实现在 EditorSheet.swift)
     @Published var editTarget: EditTarget?
@@ -700,8 +714,20 @@ final class AppModel: ObservableObject {
         if allowed.contains("tiff") { allowed.insert("tif") }
         return allowed.contains(ext)
     }
-    func upload(_ urls: [URL]) async {
-        guard !urls.isEmpty else { return }
+    /// 返回真正传上去的那几张图,顺序与入参一致。
+    ///
+    /// 加这个返回值是为了「传一张图,立刻拿它当 AI 的原图/参考图」:那条路
+    /// 要的就是这张新图的对象本身。绝大多数调用方(拖放、监控目录、编辑器)
+    /// 不关心结果,所以 `@discardableResult`——但它们走的仍是同一条流水线,
+    /// 没有为 AI 单开的上传口:配额、去重、本地预缩、失败中止全都照旧。
+    @discardableResult
+    /// copyLink 决定传完要不要把链接塞进剪贴板。
+    ///
+    /// 上传页的默认行为是传完即复制——那是它的主业。但 AI 页拿它上传参考图
+    /// 时,用户正在写提示词,剪贴板里多半是他等会儿要粘的东西,悄悄换掉是
+    /// 一件他既没要求也不会察觉的事。
+    func upload(_ urls: [URL], copyLink: Bool = true) async -> [RemoteImage] {
+        guard !urls.isEmpty else { return [] }
         // 并发调用(拖放/编辑器确认/监控几路都能进来)必须安全:旧实现整体
         // 替换 queue 后,另一路在途循环拿旧下标解引用会越界崩溃。改成:
         // 每个批次只按 id 定位自己的行,写入时刻找不到(队列被新批次换掉)
@@ -722,6 +748,7 @@ final class AppModel: ObservableObject {
 
         var done = 0
         var lastLink = ""
+        var uploaded: [RemoteImage] = []
         for (idx, item) in items.enumerated() {
             let url = item.url
             if let reason = rejectLocally(url) {
@@ -765,6 +792,9 @@ final class AppModel: ObservableObject {
                     queue[k].deduplicated = res.deduplicated
                 }
                 lastLink = linkFormat.render(res.image)
+                // 去重命中时返回的是**库里那张老图**,这正是调用方想要的:选它
+                // 当原图与选那张老图完全等价,不会凭空多出一条一模一样的记录。
+                uploaded.append(res.image)
                 done += 1
             } catch {
                 if let k = row(item.id) { queue[k].state = .failed(message(error)) }
@@ -780,11 +810,12 @@ final class AppModel: ObservableObject {
             }
         }
         if done > 0 {
-            copy(lastLink)
+            if copyLink { copy(lastLink) }
             announce(done == 1 ? L.s.errors.uploadedOne : L.s.errors.uploadedMany(done))
             quota = try? await client().quota()
             await load(resetPage: true)
         }
+        return uploaded
     }
 
     func clearQueue() { queue.removeAll() }

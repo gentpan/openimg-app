@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import UniformTypeIdentifiers
 import OpenimgKit
 
 /// 编辑页。
@@ -51,7 +50,7 @@ struct EditorPage: View {
                 .onTapGesture { model.pickAndEdit() }
                 .onDrop(of: [.fileURL], isTargeted: $dropping) { providers in
                     Task {
-                        if let url = await Self.firstFileURL(from: providers) {
+                        if let url = await DroppedFiles.firstURL(from: providers) {
                             model.openEditor(url)
                         }
                     }
@@ -86,15 +85,4 @@ struct EditorPage: View {
         }
     }
 
-    private static func firstFileURL(from providers: [NSItemProvider]) async -> URL? {
-        for p in providers {
-            let data: Data? = await withCheckedContinuation { cont in
-                _ = p.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { d, _ in
-                    cont.resume(returning: d)
-                }
-            }
-            if let data, let url = URL(dataRepresentation: data, relativeTo: nil) { return url }
-        }
-        return nil
-    }
 }

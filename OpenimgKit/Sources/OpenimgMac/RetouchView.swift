@@ -3,9 +3,12 @@ import OpenimgKit
 
 /// AI 修图页。
 ///
-/// 与生成页同一副骨架:选/写、看还剩几次、看历史。多出来的是最上面那一行
-/// 原图——修图与文生图的全部差别都在那里。原图从**图库**里选,不是从硬盘:
-/// 要改的图早就传上去了,再从本地挑一次等于让人回答一个已经答过的问题。
+/// 与生成页同一副骨架:选/写、看还剩几次、看历史。最上面那一行原图是这一页
+/// 的起点,而它与生成页的「参考图」是同一个视图(AISourceRow)。
+///
+/// 原图最终一律是**图库里的一张图**:提交只发 id,图片字节一趟也不经过本机。
+/// 硬盘上的图不是不能用——「上传新图」和拖放会先把它按正常流水线传进图库,
+/// 拿到 id 再选中;不是编码成 base64 塞进请求。
 struct RetouchView: View {
     @ObservedObject var model: AppModel
 
@@ -24,8 +27,9 @@ struct RetouchView: View {
         // 分开轮只会让同一份数据被问两遍。
         .task { await model.aiViewAppeared() }
         .onDisappear { model.aiViewDisappeared() }
-        .sheet(isPresented: $model.retouchPicking) {
-            SourcePicker(model: model)
+        // 选图面板与生成页共用一个(见 AISourceRow.swift),靠 slot 认篮子。
+        .sheet(item: $model.aiPicking) { slot in
+            AISourcePicker(model: model, slot: slot)
         }
     }
 
@@ -33,7 +37,10 @@ struct RetouchView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sourceRow
+            // 原图那一行与生成页的参考图是同一个视图:同样从图库选、同样能
+            // 直接传一张进来。这里不收窄——没有原图就没有下一步,那个框就是
+            // 整页的起点。
+            AISourceRow(model: model, slot: .retouch, label: L.s.retouch.sourcesLabel)
             presetRow
             promptField
             optionRow(L.s.retouch.sizeLabel, options: model.aiSizes,
@@ -53,84 +60,6 @@ struct RetouchView: View {
         .padding(14)
         .panelSurface(12)
         .padding(.top, 4)
-    }
-
-    /// 已选的原图,外加一个「加图」方块。空着时那个方块就是整页的起点,所以
-    /// 它比缩略图更显眼:虚线框加一句话,而不是一个小加号。
-    private var sourceRow: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(L.s.retouch.sourcesLabel)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .frame(width: 46, alignment: .leading)
-                .padding(.top, 22)
-
-            ForEach(model.retouchSources) { img in
-                SourceTile(model: model, img: img)
-            }
-
-            if model.retouchCanAddSource {
-                Button { model.retouchOpenPicker() } label: {
-                    VStack(spacing: 5) {
-                        Image(systemName: "photo.badge.plus")
-                            .font(.system(size: 17, weight: .light))
-                        Text(L.s.retouch.addSource)
-                            .font(.caption2)
-                            .multilineTextAlignment(.center)
-                    }
-                    .foregroundStyle(.secondary)
-                    .frame(width: 96, height: 64)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(.white.opacity(0.14),
-                                          style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-
-            if model.retouchCanAddSource, !model.retouchRecent.isEmpty {
-                recentStrip
-            }
-
-            Spacer(minLength: 0)
-
-            Text(L.s.retouch.sourceCount(model.retouchSources.count, aiEditSourceLimit))
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.tertiary)
-                .padding(.top, 22)
-        }
-    }
-
-    /// 最近上传的十张,一点就进原图行。
-    ///
-    /// 大多数修图针对的就是刚传上去那张,为它开一次选图窗、再从头找一遍,
-    /// 步骤全花在"找回自己五秒前传的图"上。方块比原图小一半:它是捷径不是
-    /// 主角,尺寸上就该分得出来。
-    private var recentStrip: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(L.s.retouch.recentLabel)
-                .font(.system(size: 9))
-                .foregroundStyle(.quaternary)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 5) {
-                    ForEach(model.retouchRecent) { img in
-                        Button { model.retouchToggleSource(img) } label: {
-                            Thumbnail(url: img.thumbURL, client: try? model.client())
-                                .frame(width: 44, height: 44)
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help(img.origName)
-                    }
-                }
-                .padding(.vertical, 1)
-            }
-            .frame(maxWidth: 240)
-        }
-        .padding(.top, 8)
     }
 
     /// 一键预设。点了只是把句子填进输入框,用户仍可接着改——这些是起点,
@@ -273,153 +202,6 @@ struct RetouchView: View {
                 .font(.callout).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-// MARK: - 已选的原图
-
-private struct SourceTile: View {
-    @ObservedObject var model: AppModel
-    let img: RemoteImage
-    @State private var hovering = false
-
-    var body: some View {
-        Thumbnail(url: img.thumbURL, client: try? model.client())
-            .frame(width: 96, height: 64)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(alignment: .topTrailing) {
-                // 移除按钮只在悬浮时出现:四张缩略图上各挂一个常驻的叉,那一
-                // 行看起来像是出了错。
-                if hovering {
-                    Button { model.retouchRemoveSource(img) } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.white, .black.opacity(0.55))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(4)
-                    .help(L.s.retouch.removeSource)
-                }
-            }
-            .onHover { hovering = $0 }
-            .help(img.origName)
-    }
-}
-
-// MARK: - 选图面板
-
-/// 从图库里选 1~4 张。
-///
-/// 自己拉一页而不是借图库页的 `images`:那是用户翻到的一页,借来做搜索会把
-/// 他的位置和选中状态一并冲掉。
-private struct SourcePicker: View {
-    @ObservedObject var model: AppModel
-
-    private let columns = Array(repeating: GridItem(.adaptive(minimum: 96), spacing: 8), count: 1)
-
-    var body: some View {
-        FormSheet(
-            title: L.s.retouch.pickTitle,
-            subtitle: L.s.retouch.pickSubtitle(aiEditSourceLimit),
-            width: 620
-        ) {
-            searchField
-            if model.retouchLibrary.isEmpty {
-                Text(model.retouchLibraryLoading ? L.s.common.loading : L.s.retouch.pickEmpty)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 40)
-            } else {
-                LazyVGrid(columns: columns, spacing: 8) {
-                    ForEach(model.retouchLibrary) { img in
-                        pickTile(img)
-                    }
-                }
-                if model.retouchLibraryMore {
-                    // 触底加载。网格在 ScrollView 里,这块要滚到底才渲染,
-                    // 它的出现本身就是"到底了"的信号。
-                    //
-                    // .id 挂在条数上是必需的:同一个视图身份的 task 只跑一次,
-                    // 装完一页后这块还在视野里也不会再触发,于是只能多加载
-                    // 一页就卡住。换个 id 相当于换个新视图,继续往下装。
-                    HStack {
-                        Spacer()
-                        ProgressView().controlSize(.small)
-                        Spacer()
-                    }
-                    .padding(.vertical, 12)
-                    .id(model.retouchLibrary.count)
-                    .task { await model.retouchLoadMoreLibrary() }
-                }
-            }
-        } footer: {
-            Text(L.s.retouch.sourceCount(model.retouchSources.count, aiEditSourceLimit))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-            Spacer()
-            Button(L.s.retouch.pickDone) { model.retouchPicking = false }
-                .buttonStyle(BrandButton())
-                .keyboardShortcut(.defaultAction)
-        }
-        // `.task(id:)` 在 id 变化时取消上一轮,所以这一句 sleep 就是去抖:
-        // 连着敲的每个字母都会把前一次请求连同它的等待一起取消掉。
-        .task(id: model.retouchSearch) {
-            if !model.retouchSearch.isEmpty {
-                try? await Task.sleep(for: .milliseconds(300))
-                guard !Task.isCancelled else { return }
-            }
-            await model.retouchLoadLibrary()
-        }
-    }
-
-    private var searchField: some View {
-        HStack(spacing: 7) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 12)).foregroundStyle(.tertiary)
-            TextField(L.s.retouch.pickSearchPlaceholder, text: $model.retouchSearch)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-            if model.retouchLibraryLoading {
-                ProgressView().controlSize(.small).scaleEffect(0.6)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background {
-            RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.white.opacity(0.05))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(.white.opacity(0.10), lineWidth: 0.8)
-        }
-    }
-
-    private func pickTile(_ img: RemoteImage) -> some View {
-        let picked = model.retouchIsPicked(img)
-        return Button {
-            model.retouchToggleSource(img)
-        } label: {
-            Thumbnail(url: img.thumbURL, client: try? model.client())
-                .frame(height: 72)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(picked ? Color.brand : .white.opacity(0.08),
-                                      lineWidth: picked ? 2 : 0.8)
-                }
-                .overlay(alignment: .topTrailing) {
-                    if picked {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color.brandInk, Color.brand)
-                            .padding(4)
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(img.origName)
     }
 }
 
