@@ -15,8 +15,8 @@ struct SettingsView: View {
     @State private var pkCode = ""
     @State private var pkName = ""
     @State private var newPassword2 = ""
-    /// nil 不显示表单;.some(nil) 新建;.some(profile) 编辑。
-    @State private var storageForm: StorageProfile?? = nil
+    /// 设置页里三个"要填一会儿"的表单统一走模态窗,见 FormSheet。
+    @State private var sheet: SettingsSheet?
     @State private var avatarHover = false
     @State private var avatarDropping = false
     @FocusState private var nameFocused: Bool
@@ -52,6 +52,16 @@ struct SettingsView: View {
         }
         .frame(maxWidth: .infinity)
         .task(id: model.account?.id) { await model.loadStats() }
+        .sheet(item: $sheet) { which in
+            switch which {
+            case .password:
+                PasswordSheet(model: model) { sheet = nil }
+            case .passkey:
+                PasskeySheet(model: model) { sheet = nil }
+            case .storage(let profile):
+                StorageProfileForm(model: model, editing: profile) { sheet = nil }
+            }
+        }
     }
 
     // MARK: - Cards
@@ -210,21 +220,16 @@ struct SettingsView: View {
                     ProgressView().controlSize(.small).frame(maxWidth: .infinity)
                 }
 
-                if let form = storageForm {
-                    Divider().overlay(Color.white.opacity(0.06))
-                    StorageProfileForm(model: model, editing: form) { storageForm = nil }
-                } else {
-                    HStack(spacing: 8) {
-                        Button {
-                            model.storageCodeSent = false
-                            storageForm = .some(nil)
-                        } label: {
-                            Label(L.s.settings.storageAdd, systemImage: "plus")
-                        }
-                        .buttonStyle(QuietButton())
-                        .disabled(model.busy)
-                        Spacer()
+                HStack(spacing: 8) {
+                    Button {
+                        model.storageCodeSent = false
+                        sheet = .storage(nil)
+                    } label: {
+                        Label(L.s.settings.storageAdd, systemImage: "plus")
                     }
+                    .buttonStyle(QuietButton())
+                    .disabled(model.busy)
+                    Spacer()
                 }
 
                 Text(L.s.settings.locationKeyNote)
@@ -281,7 +286,7 @@ struct SettingsView: View {
                     }
                     Button(L.s.settings.storageEdit) {
                         model.storageCodeSent = false
-                        storageForm = .some(p)
+                        sheet = .storage(p)
                     }
                     Divider()
                     Button(L.s.settings.delete, role: .destructive) { requestThen { code in
@@ -464,8 +469,6 @@ struct SettingsView: View {
         }
     }
 
-    /// 外观。产品固定深色,可切的只有品牌色相——与网站 data-brand 同一套
-    /// 取值,两端观感一致。
     /// 外观。产品固定深色,可切的只有界面语言与品牌色相——两者都与网站
     /// 同一套取值,两端观感一致。
     private var appearanceCard: some View {
@@ -669,73 +672,19 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var passwordSection: some View {
-        // 没有密码的账号(只用 OAuth/Passkey 注册)说"设置密码";旧服务器不
-        // 返回该字段时按"修改"这个保守措辞走。
         let hasPassword = model.account?.hasPassword ?? true
-        let tooShort = !newPassword.isEmpty && newPassword.count < 8
-        let mismatch = !newPassword2.isEmpty && newPassword != newPassword2
-        let ready = code.count == 6 && newPassword.count >= 8 && newPassword == newPassword2
-
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(hasPassword ? L.s.settings.changePassword : L.s.settings.setPassword)
                     .font(.callout)
                 Spacer()
-                Text(model.codeSent ? L.s.settings.codeValidHint : L.s.settings.codeWillSendHint)
-                    .font(.caption2).foregroundStyle(.tertiary)
+                Text(L.s.settings.codeWillSendHint).font(.caption2).foregroundStyle(.tertiary)
             }
-            if model.codeSent {
-                if !model.codeSentTo.isEmpty {
-                    Text(L.s.settings.codeSentTo(model.codeSentTo))
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-                Field(icon: "number") {
-                    TextField(L.s.settings.codeField, text: $code)
-                }
-                .frame(maxWidth: 240)
-                Field(icon: "lock") {
-                    SecureField(hasPassword
-                                ? L.s.settings.newPasswordField : L.s.settings.passwordField,
-                                text: $newPassword)
-                }
-                Field(icon: "lock.rotation") {
-                    SecureField(L.s.settings.repeatPasswordField, text: $newPassword2)
-                }
-                if tooShort {
-                    Text(L.s.settings.passwordTooShort).font(.caption2).foregroundStyle(.orange)
-                } else if mismatch {
-                    Text(L.s.settings.passwordMismatch).font(.caption2).foregroundStyle(.orange)
-                }
-                HStack(spacing: 8) {
-                    Button(hasPassword ? L.s.settings.confirmChange : L.s.settings.confirmSet) {
-                        Task {
-                            if await model.changePassword(code: code, newPassword: newPassword) {
-                                code = ""; newPassword = ""; newPassword2 = ""
-                            }
-                        }
-                    }
-                    .buttonStyle(BrandButton())
-                    .disabled(!ready || model.busy)
-
-                    Button(model.codeCooldown > 0
-                           ? L.s.settings.resendIn(model.codeCooldown) : L.s.settings.resendCode) {
-                        Task { await model.sendCode(.password) }
-                    }
-                    .buttonStyle(QuietButton())
-                    .disabled(model.codeCooldown > 0 || model.busy)
-
-                    Button(L.s.settings.cancel) {
-                        model.codeSent = false; code = ""; newPassword = ""; newPassword2 = ""
-                    }
-                    .buttonStyle(LinkButton()).font(.caption)
-                }
-            } else {
-                Button(hasPassword ? L.s.settings.changePassword : L.s.settings.setPassword) {
-                    Task { await model.sendCode(.password) }
-                }
-                .buttonStyle(QuietButton())
-                .disabled(model.busy)
+            Button(hasPassword ? L.s.settings.changePassword : L.s.settings.setPassword) {
+                sheet = .password
             }
+            .buttonStyle(QuietButton())
+            .disabled(model.busy)
         }
     }
 

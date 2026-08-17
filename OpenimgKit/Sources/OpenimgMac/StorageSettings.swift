@@ -78,6 +78,13 @@ extension AppModel {
 /// 字段与网页端逐一对应(名称/endpoint/区域/桶/前缀/密钥对/公开地址)。密钥
 /// 编辑时留空即沿用已存的那把——服务器从不回传密钥。保存要一枚邮箱验证码,
 /// 「仅测试」不用:它不改变任何东西。
+/// 存储位置:新增或编辑一个自有桶。
+///
+/// 字段与网页端逐一对应(名称/endpoint/区域/桶/前缀/密钥对/公开地址)。密钥
+/// 编辑时留空即沿用已存的那把——服务器从不回传密钥。
+///
+/// 验证码不在开窗时就发,而是填完点保存才发:这张表单要填一会儿,提前发的
+/// 码很可能在填完之前就过期了。
 struct StorageProfileForm: View {
     @ObservedObject var model: AppModel
     /// nil 表示新建。
@@ -97,10 +104,13 @@ struct StorageProfileForm: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(isEdit ? L.s.settings.storageEditTitle : L.s.settings.storageAddTitle)
-                .font(.callout)
-
+        FormSheet(
+            title: isEdit ? L.s.settings.storageEditTitle : L.s.settings.storageAddTitle,
+            subtitle: model.storageCodeSent && !model.storageCodeSentTo.isEmpty
+                ? L.s.settings.codeSentTo(model.storageCodeSentTo)
+                : L.s.settings.storagePublicBaseHint,
+            width: 460
+        ) {
             Field(icon: "textformat") {
                 TextField(L.s.settings.storageName, text: $input.name)
             }
@@ -122,76 +132,56 @@ struct StorageProfileForm: View {
             Field(icon: "folder") {
                 TextField(L.s.settings.storageKeyPrefix, text: $input.keyPrefix)
             }
-            HStack(spacing: 8) {
-                Field(icon: "key") {
-                    TextField(isEdit ? L.s.settings.storageAccessKeyKeep : L.s.settings.storageAccessKey,
-                              text: $input.accessKey)
-                }
-                Field(icon: "lock") {
-                    SecureField(isEdit ? L.s.settings.storageSecretKeyKeep : L.s.settings.storageSecretKey,
-                                text: $input.secretKey)
-                }
+            Field(icon: "key") {
+                TextField(isEdit ? L.s.settings.storageAccessKeyKeep : L.s.settings.storageAccessKey,
+                          text: $input.accessKey)
+            }
+            Field(icon: "lock") {
+                SecureField(isEdit ? L.s.settings.storageSecretKeyKeep : L.s.settings.storageSecretKey,
+                            text: $input.secretKey)
             }
             Field(icon: "network") {
                 TextField(L.s.settings.storagePublicBase, text: $input.publicBaseURL)
             }
-            Text(L.s.settings.storagePublicBaseHint)
-                .font(.caption2).foregroundStyle(.tertiary)
-
-            Divider().overlay(Color.white.opacity(0.06))
 
             if model.storageCodeSent {
-                if !model.storageCodeSentTo.isEmpty {
-                    Text(L.s.settings.codeSentTo(model.storageCodeSentTo))
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
+                Divider().overlay(Color.white.opacity(0.06))
                 Field(icon: "number") {
                     TextField(L.s.settings.codeField, text: $code)
                 }
-                .frame(maxWidth: 240)
             }
+        } footer: {
+            Button(L.s.settings.storageTest) {
+                Task { await model.testStorageInput(input) }
+            }
+            .buttonStyle(QuietButton())
+            .disabled(!ready || model.busy)
 
-            HStack(spacing: 8) {
-                if model.storageCodeSent {
-                    Button(L.s.settings.storageSave) {
-                        Task {
-                            var payload = input
-                            payload.code = code
-                            if await model.saveStorageProfile(payload, editing: editing?.id) {
-                                onClose()
-                            }
-                        }
-                    }
-                    .buttonStyle(BrandButton())
-                    .disabled(!ready || code.count != 6 || model.busy)
+            Spacer()
 
-                    Button(model.storageCodeCooldown > 0
-                           ? L.s.settings.resendIn(model.storageCodeCooldown)
-                           : L.s.settings.resendCode) {
-                        Task { await model.sendCode(.storage) }
-                    }
-                    .buttonStyle(QuietButton())
-                    .disabled(model.storageCodeCooldown > 0 || model.busy)
-                } else {
-                    // 保存前先要码:这一步同时也是"表单填完了"的确认。
-                    Button(L.s.settings.storageSave) {
-                        Task { await model.sendCode(.storage) }
-                    }
-                    .buttonStyle(BrandButton())
-                    .disabled(!ready || model.busy)
-                }
-
-                Button(L.s.settings.storageTest) {
-                    Task { await model.testStorageInput(input) }
-                }
+            Button(L.s.settings.cancel) { close() }
                 .buttonStyle(QuietButton())
-                .disabled(!ready || model.busy)
+                .keyboardShortcut(.cancelAction)
 
-                Button(L.s.settings.cancel) {
-                    model.storageCodeSent = false
-                    onClose()
+            if model.storageCodeSent {
+                Button(L.s.settings.storageSave) {
+                    Task {
+                        var payload = input
+                        payload.code = code
+                        if await model.saveStorageProfile(payload, editing: editing?.id) { close() }
+                    }
                 }
-                .buttonStyle(LinkButton()).font(.caption)
+                .buttonStyle(BrandButton())
+                .keyboardShortcut(.defaultAction)
+                .disabled(!ready || code.count != 6 || model.busy)
+            } else {
+                // 先要码:这一步同时也是"表单填完了"的确认。
+                Button(L.s.settings.storageSave) {
+                    Task { await model.sendCode(.storage) }
+                }
+                .buttonStyle(BrandButton())
+                .keyboardShortcut(.defaultAction)
+                .disabled(!ready || model.busy)
             }
         }
         .task {
@@ -202,5 +192,10 @@ struct StorageProfileForm: View {
             i.bucket = e.bucket; i.keyPrefix = e.keyPrefix; i.publicBaseURL = e.publicBaseURL
             input = i
         }
+    }
+
+    private func close() {
+        model.storageCodeSent = false
+        onClose()
     }
 }
