@@ -266,7 +266,7 @@ struct SettingsView: View {
                         Text("已暂停：\(reason)").font(.caption).foregroundStyle(.orange)
                         Spacer()
                         Button("继续") { model.watchResume() }
-                            .controlSize(.small)
+                            .buttonStyle(QuietButton())
                     }
                 } else if !model.watchStatus.isEmpty {
                     Text(model.watchStatus).font(.caption).foregroundStyle(.tertiary)
@@ -308,12 +308,12 @@ struct SettingsView: View {
                     } label: {
                         Label("添加目录…", systemImage: "plus")
                     }
-                    .controlSize(.small)
+                    .buttonStyle(QuietButton())
 
                     if model.watchEnabled, !model.watchFolders.isEmpty,
                        model.watchPausedReason == nil {
                         Button("立即扫描") { model.watchScanFresh() }
-                            .controlSize(.small)
+                            .buttonStyle(QuietButton())
                             .disabled(model.watchBusy)
                     }
                     Spacer()
