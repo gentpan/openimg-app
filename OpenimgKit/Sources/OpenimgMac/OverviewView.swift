@@ -28,6 +28,8 @@ struct OverviewView: View {
                     formatCard
                 }
                 VStack(spacing: 16) {
+                    recentCard
+                    trendCard
                     checkinCard
                     ledgerCard
                 }
@@ -38,6 +40,80 @@ struct OverviewView: View {
             .padding(.bottom, 22)
         }
         .task { await model.loadStats() }
+    }
+
+    // MARK: - 最近上传
+
+    /// 最近上传的缩略图带。
+    ///
+    /// 概览原来全是数字和饼图,看不到一张自己的图。这条带子用图库已经加载
+    /// 的那一页数据,不多发一次请求;点一张直接跳到图库。
+    @ViewBuilder private var recentCard: some View {
+        if !model.images.isEmpty {
+            Card(L.s.overview.recentTitle, "photo.stack") {
+                let shots = Array(model.images.prefix(8))
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4),
+                          spacing: 6) {
+                    ForEach(shots) { img in
+                        Button {
+                            model.section = .gallery
+                            model.detail = img
+                        } label: {
+                            Thumbnail(url: img.thumbURL, client: try? model.client())
+                                .frame(height: 54)
+                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .help(img.origName)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 上传趋势
+
+    /// 最近 14 天的上传条形图。
+    ///
+    /// 由已加载的图片按天聚合,而不是另加一个统计接口——用户端本来就没有
+    /// 按日序列的端点,而"最近这些图是什么时候传的"用现成数据就能答。
+    /// 只画有数据的那段:一整排零柱说明的是没数据,不是趋势。
+    @ViewBuilder private var trendCard: some View {
+        let days = recentDays
+        if days.contains(where: { $0.count > 0 }) {
+            Card(L.s.overview.trendTitle, "chart.bar") {
+                Chart(days, id: \.day) { d in
+                    BarMark(
+                        x: .value(L.s.overview.trendDay, d.day, unit: .day),
+                        y: .value(L.s.overview.trendCount, d.count)
+                    )
+                    .foregroundStyle(Color.brand.gradient)
+                    .cornerRadius(2)
+                }
+                .chartYAxis { AxisMarks(position: .leading) }
+                .frame(height: 110)
+                Text(L.s.overview.trendNote(days.reduce(0) { $0 + $1.count }))
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    /// 把当前这页图片按自然日归并到最近 14 天。
+    private var recentDays: [(day: Date, count: Int)] {
+        var cal = Calendar.current
+        cal.locale = L.locale
+        let today = cal.startOfDay(for: Date())
+        guard let from = cal.date(byAdding: .day, value: -13, to: today) else { return [] }
+        var buckets: [Date: Int] = [:]
+        for img in model.images {
+            let d = cal.startOfDay(for: img.createdAt)
+            guard d >= from else { continue }
+            buckets[d, default: 0] += 1
+        }
+        return (0..<14).compactMap { i in
+            guard let d = cal.date(byAdding: .day, value: i, to: from) else { return nil }
+            return (d, buckets[d] ?? 0)
+        }
     }
 
     // MARK: - Quota

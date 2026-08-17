@@ -8,6 +8,7 @@ struct NavStrings: Sendable {
     let overview: String
     let gallery: String
     let upload: String
+    let editor: String
     let settings: String
 
     // 菜单命令。「刷新」是通用词,取 common 那份,这里不再留一个同值副本。
@@ -33,6 +34,7 @@ extension NavStrings {
         case .overview: overview
         case .gallery: gallery
         case .upload: upload
+        case .editor: editor
         case .settings: settings
         }
     }
@@ -41,6 +43,7 @@ extension NavStrings {
         overview: "概览",
         gallery: "图库",
         upload: "上传",
+        editor: "编辑",
         settings: "设置",
         uploadImages: "上传图片…",
         sort: "排序",
@@ -55,6 +58,7 @@ extension NavStrings {
         overview: "Overview",
         gallery: "Gallery",
         upload: "Upload",
+        editor: "Edit",
         settings: "Settings",
         uploadImages: "Upload Images…",
         sort: "Sort",

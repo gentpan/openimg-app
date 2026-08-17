@@ -5,6 +5,11 @@ import Foundation
 /// 图表里的 `.value(...)` 标签也收在这里——图例虽然隐藏,但它是 VoiceOver
 /// 念出来的那一份,漏掉就等于把中文留在了朗读里。
 struct OverviewStrings: Sendable {
+    let recentTitle: String
+    let trendTitle: String
+    let trendDay: String
+    let trendCount: String
+    let trendNote: @Sendable (Int) -> String
     // 配额
     let quotaTitle: String
     let quotaAvailable: String
@@ -44,6 +49,11 @@ struct OverviewStrings: Sendable {
 
 extension OverviewStrings {
     static let zh = OverviewStrings(
+        recentTitle: "最近上传",
+        trendTitle: "上传趋势",
+        trendDay: "日期",
+        trendCount: "张数",
+        trendNote: { n in "当前这页里最近 14 天共 \(n) 张" },
         quotaTitle: "空间",
         quotaAvailable: "可用",
         quotaUsed: { size in "已用 \(size)" },
@@ -84,6 +94,11 @@ extension OverviewStrings {
         emptyState: "暂无数据")
 
     static let en = OverviewStrings(
+        recentTitle: "Recent uploads",
+        trendTitle: "Upload activity",
+        trendDay: "Day",
+        trendCount: "Images",
+        trendNote: { n in "\(n) in the last 14 days, from the page currently loaded" },
         quotaTitle: "Storage",
         quotaAvailable: "available",
         quotaUsed: { size in "\(size) used" },

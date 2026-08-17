@@ -5,6 +5,11 @@ import Foundation
 /// 标题拆成 `headerPrefix` + 品牌字（"Open"/"img" 用 Ubuntu 单独排），所以这里
 /// 只放前半句,末尾那个空格是排版的一部分,别顺手删掉。
 struct LoginStrings: Sendable {
+    let serverSwitch: String
+    let serverField: String
+    let serverApply: String
+    let serverReset: String
+    let serverCurrent: @Sendable (String) -> String
     let headerPrefix: String
     let tagline: String
 
@@ -31,6 +36,11 @@ struct LoginStrings: Sendable {
 
 extension LoginStrings {
     static let zh = LoginStrings(
+        serverSwitch: "使用自建实例",
+        serverField: "服务器地址",
+        serverApply: "使用这个地址",
+        serverReset: "改回官方",
+        serverCurrent: { s in "服务器：\(s)" },
         headerPrefix: "登录 ",
         tagline: "图片托管与分发",
         emailPlaceholder: "you@example.com",
@@ -48,6 +58,11 @@ extension LoginStrings {
         cannotOpenAuthWindow: "无法打开登录窗口")
 
     static let en = LoginStrings(
+        serverSwitch: "Use a self-hosted instance",
+        serverField: "Server URL",
+        serverApply: "Use this server",
+        serverReset: "Back to official",
+        serverCurrent: { s in "Server: \(s)" },
         headerPrefix: "Sign in to ",
         tagline: "Image hosting and delivery",
         emailPlaceholder: "you@example.com",

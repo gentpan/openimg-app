@@ -21,13 +21,26 @@ public struct EditSpec: Sendable, Equatable {
     public var strokes: [MosaicStroke] = []
     public var mosaicStyle: MosaicStyle = .pixelate
     public var watermark: WatermarkSpec?
+    /// 本机智能操作。放在旋转之后、马赛克之前:去背景要认整幅画面里的主体,
+    /// 先涂马赛克会把主体糊掉一块,分割结果跟着错。
+    public var enhance = false
+    public var cutout = false
+    /// 导出质量。只作用于编辑产物——编辑过的图本来就是新内容,不存在破坏
+    /// 秒传去重的问题(未编辑的原件仍走原样上传,见 LocalResize 头注)。
+    public var exportQuality: Double = 0.92
+    /// 导出前限宽,0 不限。同上,只对编辑产物生效。
+    public var exportMaxWidth = 0
 
     public init() {}
 
     /// 有任何会改变像素的操作。
     public var hasEdits: Bool {
         rotationQuarters % 4 != 0 || crop != nil || !strokes.isEmpty || watermark != nil
+            || enhance || cutout || exportMaxWidth > 0
     }
+
+    /// 抠图产物必须带透明通道,只能出 PNG——JPEG 会把透明填成黑色。
+    public var forcesPNG: Bool { cutout }
 }
 
 public struct MosaicStroke: Sendable, Equatable {
@@ -246,6 +259,8 @@ public enum ImageEdit {
             guard let r = rotate(img, quarters: spec.rotationQuarters) else { return nil }
             img = r
         }
+        if spec.enhance, let e = SmartEdit.autoEnhance(img) { img = e }
+        if spec.cutout, let c = (try? SmartEdit.removeBackground(img)) ?? nil { img = c }
         if !spec.strokes.isEmpty {
             guard let m = mosaic(img, strokes: spec.strokes, style: spec.mosaicStyle) else { return nil }
             img = m
@@ -276,6 +291,16 @@ public enum ImageEdit {
             guard let r = rotate(img, quarters: spec.rotationQuarters) else { return nil }
             img = r
         }
+        // 智能操作先于马赛克:去背景认的是整幅画面里的主体,先涂一块马赛克
+        // 会把主体糊掉,分割结果跟着错。
+        if spec.enhance, let e = SmartEdit.autoEnhance(img) {
+            img = e
+        }
+        if spec.cutout {
+            // 抠不出主体时保持原图——与其给一张被胡乱挖空的图,不如什么都
+            // 不做,调用方会据此提示。
+            if let c = (try? SmartEdit.removeBackground(img)) ?? nil { img = c }
+        }
         if !spec.strokes.isEmpty {
             guard let m = mosaic(img, strokes: spec.strokes, style: spec.mosaicStyle) else { return nil }
             img = m
@@ -294,7 +319,19 @@ public enum ImageEdit {
             img = w
         }
 
-        let isJPEG = CGImageSourceGetType(src).map { UTType($0 as String)?.conforms(to: .jpeg) ?? false } ?? false
+        // 导出限宽:编辑产物是新内容,缩放它不影响秒传去重。
+        if spec.exportMaxWidth > 0, img.width > spec.exportMaxWidth {
+            let scale = Double(spec.exportMaxWidth) / Double(img.width)
+            let w = spec.exportMaxWidth, h = max(1, Int((Double(img.height) * scale).rounded()))
+            if let ctx = context(w, h) {
+                ctx.interpolationQuality = .high
+                ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+                if let scaled = ctx.makeImage() { img = scaled }
+            }
+        }
+
+        let isJPEG = !spec.forcesPNG
+            && (CGImageSourceGetType(src).map { UTType($0 as String)?.conforms(to: .jpeg) ?? false } ?? false)
         let ext = isJPEG ? "jpg" : "png"
         let uti = isJPEG ? UTType.jpeg.identifier : UTType.png.identifier
         let dir = FileManager.default.temporaryDirectory
@@ -304,7 +341,7 @@ public enum ImageEdit {
         let out = dir.appendingPathComponent(name).appendingPathExtension(ext)
         guard let dst = CGImageDestinationCreateWithURL(out as CFURL, uti as CFString, 1, nil) else { return nil }
         CGImageDestinationAddImage(dst, img, [
-            kCGImageDestinationLossyCompressionQuality: 0.92,
+            kCGImageDestinationLossyCompressionQuality: max(0.4, min(1, spec.exportQuality)),
         ] as CFDictionary)
         guard CGImageDestinationFinalize(dst) else {
             try? FileManager.default.removeItem(at: dir)

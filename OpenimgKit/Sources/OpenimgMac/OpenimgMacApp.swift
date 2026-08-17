@@ -73,6 +73,7 @@ struct RootView: View {
                 case .overview: OverviewView(model: model)
                 case .gallery:  GalleryView(model: model)
                 case .upload:   UploadView(model: model)
+                case .editor:   EditorPage(model: model)
                 case .settings: SettingsView(model: model)
                 }
             }

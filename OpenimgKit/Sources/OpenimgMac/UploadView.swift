@@ -56,9 +56,6 @@ struct UploadView: View {
                 return true
             }
             .animation(.easeOut(duration: 0.15), value: model.dropping)
-            .sheet(item: $model.editTarget) { t in
-                EditorSheet(model: model, source: t.url)
-            }
     }
 
     /// 编辑入口:显式按钮 + 可选的"单张拖入先编辑"。

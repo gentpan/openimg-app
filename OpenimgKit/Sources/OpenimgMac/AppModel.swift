@@ -6,7 +6,7 @@ import OpenimgKit
 /// Trailing underscore because `Section` is a SwiftUI type and shadowing it
 /// makes every `Section { }` in a List fail to resolve.
 enum Section_: String, CaseIterable, Identifiable, Hashable {
-    case overview, gallery, upload, settings
+    case overview, gallery, upload, editor, settings
     var id: String { rawValue }
     /// 显示名归 nav 分区管——侧栏、顶栏、这里都取同一份,不各写各的。
     var label: String { L.s.nav.section(self) }
@@ -15,6 +15,7 @@ enum Section_: String, CaseIterable, Identifiable, Hashable {
         case .overview: "chart.bar.doc.horizontal"
         case .gallery: "square.grid.2x2"
         case .upload: "arrow.up.circle"
+        case .editor: "crop"
         case .settings: "gearshape"
         }
     }
@@ -27,6 +28,7 @@ enum Section_: String, CaseIterable, Identifiable, Hashable {
         case .overview: "chart.bar.doc.horizontal.fill"
         case .gallery: "square.grid.2x2.fill"
         case .upload: "arrow.up.circle.fill"
+        case .editor: "crop.rotate"
         case .settings: "gearshape.fill"
         }
     }
@@ -42,11 +44,14 @@ final class AppModel: ObservableObject {
     static let shared = AppModel()
 
     // Connection
-    /// Fixed, and not shown anywhere in the UI. The Kit still takes a URL —
-    /// it is a library and a hard-wired host would make it untestable — but
-    /// this app targets one service, so putting an address field in front of
-    /// the user only invites them to type something that will not work.
-    let server = "https://openimg.io"
+    /// 默认指向官方实例,但可以改——后端是 MIT 开源、可自建的,把地址写死
+    /// 等于告诉自建者"这个 App 不是给你的"。Kit 本来就收 URL 参数(它是个
+    /// 库,写死主机没法测),这里只是把那个能力接到界面上。
+    ///
+    /// 登录页默认不显示地址栏:给普通用户一个输入框,只会招来一个填错的地址。
+    /// 要用自建实例的人会去展开那一行。
+    static let officialServer = "https://openimg.io"
+    @Published var server = UserDefaults.standard.string(forKey: "server") ?? officialServer
     @Published var token = ""
     @Published var email = UserDefaults.standard.string(forKey: "email") ?? ""
     @Published var password = ""
@@ -212,6 +217,25 @@ final class AppModel: ObservableObject {
             throw OpenimgError.badServerURL
         }
         return try OpenimgClient(server: url, token: token)
+    }
+
+    /// 换服务器:令牌、账号、图库全都属于旧实例,一并清掉。清单与偏好按
+    /// 服务器+账号键控,不需要在这里动。
+    func setServer(_ raw: String) {
+        var v = raw.trimmingCharacters(in: .whitespaces)
+        if v.isEmpty { v = Self.officialServer }
+        if !v.contains("://") { v = "https://" + v }
+        while v.hasSuffix("/") { v.removeLast() }
+        guard v != server else { return }
+        watchStop()
+        server = v
+        UserDefaults.standard.set(v, forKey: "server")
+        token = ""
+        account = nil
+        quota = nil
+        images = []
+        total = 0
+        storageProfiles = []
     }
 
     /// Names the credential on the server, so the token list on the website
@@ -480,7 +504,7 @@ final class AppModel: ObservableObject {
         switch section {
         case .gallery: await load()
         case .overview: await loadStats()
-        case .upload, .settings:
+        case .upload, .editor, .settings:
             quota = try? await client().quota()
         }
     }

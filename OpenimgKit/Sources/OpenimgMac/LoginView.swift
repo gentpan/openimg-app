@@ -6,6 +6,8 @@ import OpenimgKit
 /// same weight as everything they cannot do yet.
 struct LoginView: View {
     @ObservedObject var model: AppModel
+    @State private var showServer = false
+    @State private var serverDraft = ""
 
     var body: some View {
         ZStack {
@@ -85,6 +87,8 @@ struct LoginView: View {
             Text(model.useToken ? L.s.login.tokenNote : L.s.login.passwordNote)
                 .font(.caption2).foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
+
+            serverRow
         }
         .padding(26)
         .frame(width: 348)
@@ -93,6 +97,46 @@ struct LoginView: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.ultraThinMaterial)
         )
         .shadow(color: .black.opacity(0.45), radius: 28, y: 12)
+    }
+
+    /// 自建实例入口。
+    ///
+    /// 默认折叠:后端是 MIT 开源可自建的,把地址写死等于告诉自建者"这个 App
+    /// 不是给你的";但给普通用户一个常驻输入框,只会招来一个填错的地址。
+    /// 所以默认只显示当前连的是哪儿,想改的人点一下展开。
+    @ViewBuilder private var serverRow: some View {
+        if showServer {
+            VStack(spacing: 6) {
+                Field(icon: "server.rack") {
+                    TextField(L.s.login.serverField, text: $serverDraft)
+                        .onSubmit { model.setServer(serverDraft) }
+                }
+                HStack(spacing: 8) {
+                    Button(L.s.login.serverApply) { model.setServer(serverDraft) }
+                        .buttonStyle(QuietButton())
+                        .disabled(serverDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    if model.server != AppModel.officialServer {
+                        Button(L.s.login.serverReset) {
+                            model.setServer(AppModel.officialServer)
+                            serverDraft = AppModel.officialServer
+                        }
+                        .buttonStyle(LinkButton()).font(.caption2)
+                    }
+                }
+            }
+            .padding(.top, 2)
+        } else {
+            Button {
+                serverDraft = model.server
+                withAnimation(.easeOut(duration: 0.15)) { showServer = true }
+            } label: {
+                Text(model.server == AppModel.officialServer
+                     ? L.s.login.serverSwitch
+                     : L.s.login.serverCurrent(model.server))
+                    .font(.caption2)
+            }
+            .buttonStyle(LinkButton())
+        }
     }
 
     private var header: some View {

@@ -2,6 +2,18 @@ import Foundation
 
 /// 上传前编辑器:裁剪 / 马赛克 / 旋转 / 水印的工具栏、提示与放弃确认。
 struct EditorStrings: Sendable {
+    let enhance: String
+    let enhanceHelp: String
+    let cutout: String
+    let cutoutHelp: String
+    let pageTitle: String
+    let pageHint: String
+    let capCrop: String
+    let capMosaic: String
+    let capEnhance: String
+    let capCutout: String
+    let capWatermark: String
+    let localOnlyNote: String
     // 入口与不可编辑的几种情形
     let pickPrompt: String
     let animatedUnsupported: String
@@ -42,6 +54,18 @@ struct EditorStrings: Sendable {
 
 extension EditorStrings {
     static let zh = EditorStrings(
+        enhance: "自动增强",
+        enhanceHelp: "自动校正曝光、对比与色偏，全部在本机完成",
+        cutout: "去背景",
+        cutoutHelp: "识别主体、抠掉背景，输出透明 PNG。本机完成，不上传任何数据",
+        pageTitle: "把图片拖到这里编辑",
+        pageHint: "或点击选择。裁剪、打码、去背景、加水印，改完直接上传",
+        capCrop: "裁剪",
+        capMosaic: "马赛克",
+        capEnhance: "自动增强",
+        capCutout: "去背景",
+        capWatermark: "水印",
+        localOnlyNote: "全部在本机处理，不会把图片发给任何第三方",
         pickPrompt: "编辑",
         animatedUnsupported: "动图不支持编辑，可直接上传",
         tooLarge: { mp in "图片超过 \(mp * 100) 万像素，暂不支持编辑，可直接上传" },
@@ -74,6 +98,18 @@ extension EditorStrings {
         upload: "上传")
 
     static let en = EditorStrings(
+        enhance: "Enhance",
+        enhanceHelp: "Auto-corrects exposure, contrast and colour cast — all on this Mac",
+        cutout: "Cut out",
+        cutoutHelp: "Detects the subject and removes the background, exporting a transparent PNG. Runs locally; nothing is uploaded",
+        pageTitle: "Drop an image here to edit",
+        pageHint: "Or click to choose. Crop, redact, cut out, watermark — then upload straight from here",
+        capCrop: "Crop",
+        capMosaic: "Mosaic",
+        capEnhance: "Enhance",
+        capCutout: "Cut out",
+        capWatermark: "Watermark",
+        localOnlyNote: "Everything runs on this Mac — your images are never sent to a third party",
         pickPrompt: "Edit",
         animatedUnsupported: "Animated images can’t be edited — upload this one as is",
         tooLarge: { mp in "Images over \(mp) megapixels can’t be edited — upload this one as is" },

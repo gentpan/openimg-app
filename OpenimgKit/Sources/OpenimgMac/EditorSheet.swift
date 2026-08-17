@@ -10,6 +10,7 @@ struct EditTarget: Identifiable {
 
 extension AppModel {
     /// 挑一张图进编辑器;动图明说不支持,而不是静默取首帧丢动画。
+    /// 从别处(上传页按钮、菜单)进编辑:选完图直接落到编辑页。
     func pickAndEdit() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
@@ -78,7 +79,7 @@ extension AppModel {
 ///
 /// 预览 = Kit 渲染的降采样底图(旋转+马赛克) + 画布叠加层(裁剪框、水印
 /// 文字)——底图与成品走同一段渲染代码,所见即所得不靠两套绘制对齐。
-struct EditorSheet: View {
+struct EditorCanvas: View {
     @ObservedObject var model: AppModel
     let source: URL
 
@@ -138,7 +139,7 @@ struct EditorSheet: View {
         ]
     }
     private static let freeRatioID = "free"
-    @State private var ratioID = EditorSheet.freeRatioID
+    @State private var ratioID = EditorCanvas.freeRatioID
 
     var body: some View {
         VStack(spacing: 0) {
@@ -215,6 +216,8 @@ struct EditorSheet: View {
                 .disabled(spec.strokes.isEmpty)
             }
 
+            smartTools
+
             Button {
                 spec = EditGeometry.rotateSpecCW(spec)
                 // 比例随画面转置(16:9 → 9:16),只换显示不重套框。
@@ -243,6 +246,35 @@ struct EditorSheet: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    /// 本机智能工具。全离线,不外发。开销比其它工具大(整幅重算),所以拆成
+    /// 独立子视图——连同工具栏其余部分写在一个表达式里,类型检查器会直接
+    /// 放弃诊断。
+    @ViewBuilder private var smartTools: some View {
+        Divider().frame(height: 18).overlay(Color.white.opacity(0.12))
+
+        Toggle(isOn: $spec.enhance) {
+            Label(L.s.editor.enhance, systemImage: "wand.and.stars")
+        }
+        .toggleStyle(.button)
+        .disabled(rendering)
+        .help(L.s.editor.enhanceHelp)
+        .onChange(of: spec.enhance) { _, _ in
+            Task { await refreshPreview() }
+        }
+
+        Toggle(isOn: $spec.cutout) {
+            Label(L.s.editor.cutout, systemImage: "person.and.background.dotted")
+        }
+        .toggleStyle(.button)
+        .disabled(rendering)
+        .help(L.s.editor.cutoutHelp)
+        .onChange(of: spec.cutout) { _, _ in
+            Task { await refreshPreview() }
+        }
+
+        Divider().frame(height: 18).overlay(Color.white.opacity(0.12))
     }
 
     // MARK: - 画布
