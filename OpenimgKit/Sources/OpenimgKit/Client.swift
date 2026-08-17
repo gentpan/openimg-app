@@ -361,6 +361,55 @@ public struct OpenimgClient: Sendable {
         return try decode(UploadResponse.self, data, resp)
     }
 
+    // MARK: - 存储位置(BYOS)
+
+    public func storageProfiles() async throws -> [StorageProfile] {
+        struct Wrap: Decodable { let profiles: [StorageProfile]? }
+        let (data, resp) = try await session.data(for: request("GET", "api/storage/profiles"))
+        return try decode(Wrap.self, data, resp).profiles ?? []
+    }
+
+    /// 新建。服务器先探测再落库——写不进去的桶比没有桶更糟:用户以为配好
+    /// 了,上传才失败。`testOnly` 只探测不保存,也不需要验证码。
+    @discardableResult
+    public func createStorageProfile(_ input: StorageProfileInput) async throws -> Bool {
+        var req = request("POST", "api/storage/profiles")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(input)
+        let (data, resp) = try await session.data(for: req)
+        _ = try decode(OK.self, data, resp)
+        return true
+    }
+
+    public func updateStorageProfile(id: String, input: StorageProfileInput) async throws {
+        var req = request("PATCH", "api/storage/profiles/\(id)")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(input)
+        let (data, resp) = try await session.data(for: req)
+        _ = try decode(OK.self, data, resp)
+    }
+
+    public func deleteStorageProfile(id: String, code: String) async throws {
+        let (data, resp) = try await session.data(
+            for: request("DELETE", "api/storage/profiles/\(id)",
+                         query: [.init(name: "code", value: code)]))
+        _ = try decode(OK.self, data, resp)
+    }
+
+    /// 用已存的凭据戳一下这个桶。不改任何东西,所以不要验证码。
+    public func testStorageProfile(id: String) async throws {
+        let (data, resp) = try await session.data(
+            for: request("POST", "api/storage/profiles/\(id)/test"))
+        _ = try decode(OK.self, data, resp)
+    }
+
+    public func setDefaultStorageProfile(id: String, code: String) async throws {
+        let (data, resp) = try await session.data(
+            for: request("POST", "api/storage/profiles/\(id)/default",
+                         query: [.init(name: "code", value: code)]))
+        _ = try decode(OK.self, data, resp)
+    }
+
     private struct OK: Decodable { let ok: Bool }
 }
 

@@ -346,6 +346,7 @@ public struct OTPSent: Codable, Sendable {
 public enum AccountCodePurpose: String, Sendable {
     case password
     case passkey
+    case storage
 }
 
 public struct PasskeyCredential: Codable, Sendable, Identifiable {

@@ -15,6 +15,8 @@ struct SettingsView: View {
     @State private var pkCode = ""
     @State private var pkName = ""
     @State private var newPassword2 = ""
+    /// nil 不显示表单;.some(nil) 新建;.some(profile) 编辑。
+    @State private var storageForm: StorageProfile?? = nil
     @State private var avatarHover = false
     @State private var avatarDropping = false
     @FocusState private var nameFocused: Bool
@@ -196,43 +198,127 @@ struct SettingsView: View {
     /// can already reach.
     private var locationCard: some View {
         SettingsCard(L.s.settings.location, "externaldrive.connected.to.line.below") {
-            if let profiles = model.summary?.byProfile, !profiles.isEmpty {
-                VStack(spacing: 0) {
-                    ForEach(Array(profiles.enumerated()), id: \.element.id) { i, p in
-                        if i > 0 { Divider().overlay(Color.white.opacity(0.06)) }
-                        HStack(spacing: 10) {
-                            Image(systemName: p.kind == "platform"
-                                  ? "cube.box" : "externaldrive.badge.person.crop")
-                                .font(.system(size: 14))
-                                .foregroundStyle(Color.brand)
-                                .frame(width: 20)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(p.name).font(.callout)
-                                // The platform pool's name already is its kind;
-                                // printing both gives "平台存储池 平台存储池".
-                                if let k = kindLabel(p.kind), k != p.name {
-                                    Text(k).font(.caption2).foregroundStyle(.tertiary)
-                                }
-                            }
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 1) {
-                                Text(model.bytes(p.bytes)).font(.callout.monospacedDigit())
-                                Text(L.s.settings.imageCount(p.images))
-                                    .font(.caption2).foregroundStyle(.tertiary)
-                            }
+            VStack(alignment: .leading, spacing: 10) {
+                if !model.storageProfiles.isEmpty {
+                    VStack(spacing: 0) {
+                        ForEach(Array(model.storageProfiles.enumerated()), id: \.element.id) { i, p in
+                            if i > 0 { Divider().overlay(Color.white.opacity(0.06)) }
+                            profileRow(p)
                         }
-                        .padding(.vertical, 9)
+                    }
+                } else if model.statsLoading {
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity)
+                }
+
+                if let form = storageForm {
+                    Divider().overlay(Color.white.opacity(0.06))
+                    StorageProfileForm(model: model, editing: form) { storageForm = nil }
+                } else {
+                    HStack(spacing: 8) {
+                        Button {
+                            model.storageCodeSent = false
+                            storageForm = .some(nil)
+                        } label: {
+                            Label(L.s.settings.storageAdd, systemImage: "plus")
+                        }
+                        .buttonStyle(QuietButton())
+                        .disabled(model.busy)
+                        Spacer()
                     }
                 }
+
                 Text(L.s.settings.locationKeyNote)
                     .font(.caption2).foregroundStyle(.tertiary)
-                    .padding(.top, 8)
-            } else if model.statsLoading {
-                ProgressView().controlSize(.small).frame(maxWidth: .infinity)
-            } else {
-                Text(L.s.settings.locationEmpty)
-                    .font(.callout).foregroundStyle(.secondary)
             }
+        }
+        .task(id: model.account?.id) { await model.loadStorageProfiles() }
+    }
+
+    /// 一行一个存储位置:名称与用量在左,操作在右。平台池不可编辑也不可删,
+    /// 但可以被设回默认。
+    private func profileRow(_ p: StorageProfile) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: p.isPlatform ? "cube.box" : "externaldrive.badge.person.crop")
+                .font(.system(size: 14))
+                .foregroundStyle(p.isActive ? Color.brand : .orange)
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(p.name).font(.callout)
+                    if p.isDefault {
+                        Text(L.s.settings.storageDefaultBadge)
+                            .font(.caption2)
+                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .background(Capsule().fill(Color.brand.opacity(0.18)))
+                            .foregroundStyle(Color.brand)
+                    }
+                }
+                if let err = p.lastError, !err.isEmpty, !p.isActive {
+                    Text(err).font(.caption2).foregroundStyle(.orange).lineLimit(1)
+                } else if let k = kindLabel(p.kind), k != p.name {
+                    Text(k).font(.caption2).foregroundStyle(.tertiary)
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(model.bytes(p.storedBytes)).font(.callout.monospacedDigit())
+                Text(L.s.settings.imageCount(Int(p.imageCount)))
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+            Menu {
+                if !p.isDefault, p.isActive {
+                    Button(L.s.settings.storageSetDefault) { requestThen { code in
+                        await model.setDefaultStorageProfile(p, code: code)
+                    } }
+                }
+                if !p.isPlatform {
+                    Button(L.s.settings.storageTest) {
+                        Task {
+                            do { try await model.client().testStorageProfile(id: p.id)
+                                 model.announce(L.s.settings.storageTestPassed) }
+                            catch { model.announce(model.message(error)) }
+                        }
+                    }
+                    Button(L.s.settings.storageEdit) {
+                        model.storageCodeSent = false
+                        storageForm = .some(p)
+                    }
+                    Divider()
+                    Button(L.s.settings.delete, role: .destructive) { requestThen { code in
+                        await model.deleteStorageProfile(p, code: code)
+                    } }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .frame(width: 20)
+            .disabled(p.isPlatform && p.isDefault)
+        }
+        .padding(.vertical, 9)
+    }
+
+    /// 设默认与删除同样要码,但它们没有表单可以承载输入框——用一个小对话框
+    /// 收码,免得为两个动作各建一套界面。
+    private func requestThen(_ action: @escaping (String) async -> Void) {
+        Task {
+            await model.sendCode(.storage)
+            guard model.storageCodeSent else { return }
+            let alert = NSAlert()
+            alert.messageText = L.s.settings.codeField
+            alert.informativeText = L.s.settings.codeSentTo(model.storageCodeSentTo)
+            let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+            alert.accessoryView = field
+            alert.addButton(withTitle: L.s.settings.confirmChange)
+            alert.addButton(withTitle: L.s.settings.cancel)
+            guard alert.runModal() == .alertFirstButtonReturn else {
+                model.storageCodeSent = false
+                return
+            }
+            await action(field.stringValue.trimmingCharacters(in: .whitespaces))
         }
     }
 

@@ -98,6 +98,30 @@ struct SettingsStrings: Sendable {
     let anchorNames: [String]
 
     // 存储位置
+    let storageAdd: String
+    let storageAddTitle: String
+    let storageEditTitle: String
+    let storageName: String
+    let storageEndpoint: String
+    let storageRegion: String
+    let storageBucket: String
+    let storageKeyPrefix: String
+    let storageAccessKey: String
+    let storageSecretKey: String
+    let storageAccessKeyKeep: String
+    let storageSecretKeyKeep: String
+    let storagePublicBase: String
+    let storagePublicBaseHint: String
+    let storageSave: String
+    let storageTest: String
+    let storageEdit: String
+    let storageSetDefault: String
+    let storageDefaultBadge: String
+    let storageSaved: String
+    let storageTestPassed: String
+    let storageRemoved: String
+    let storageDefaultSet: @Sendable (String) -> String
+    let endpointKind: @Sendable (StorageProfileInput.EndpointKind) -> String
     let location: String
     let locationKeyNote: String
     let locationEmpty: String
@@ -225,6 +249,40 @@ extension SettingsStrings {
             "左上", "上中", "右上", "左中", "居中", "右中", "左下", "下中", "右下",
         ],
 
+        storageAdd: "添加存储位置",
+        storageAddTitle: "添加自有存储",
+        storageEditTitle: "修改存储配置",
+        storageName: "名称（如 我的 R2）",
+        storageEndpoint: "Endpoint",
+        storageRegion: "区域",
+        storageBucket: "存储桶",
+        storageKeyPrefix: "路径前缀（可选）",
+        storageAccessKey: "Access Key",
+        storageSecretKey: "Secret Key",
+        storageAccessKeyKeep: "Access Key（留空不改）",
+        storageSecretKeyKeep: "Secret Key（留空不改）",
+        storagePublicBase: "公开访问地址",
+        storagePublicBaseHint: "图片外链用它拼出来，通常是你桶的自定义域名。保存前会先探测能否写入——写不进去的桶比没有桶更糟。",
+        storageSave: "保存",
+        storageTest: "仅测试",
+        storageEdit: "修改配置",
+        storageSetDefault: "设为默认",
+        storageDefaultBadge: "默认",
+        storageSaved: "存储配置已保存",
+        storageTestPassed: "连接正常，可以写入",
+        storageRemoved: "存储位置已移除",
+        storageDefaultSet: { name in "以后上传到 \(name)" },
+        endpointKind: { k in
+            switch k {
+            case .r2: "看起来是 Cloudflare R2"
+            case .s3: "看起来是 Amazon S3"
+            case .b2: "看起来是 Backblaze B2"
+            case .spaces: "看起来是 DigitalOcean Spaces"
+            case .oss: "看起来是阿里云 OSS"
+            case .cos: "看起来是腾讯云 COS"
+            case .custom: "自定义 S3 兼容服务"
+            }
+        },
         location: "存储位置",
         locationKeyNote: "新增或修改存储位置需要填写密钥，见下方「在网站上管理」",
         locationEmpty: "还没有图片，看不出存的位置",
@@ -349,6 +407,40 @@ extension SettingsStrings {
             "Bottom left", "Bottom center", "Bottom right",
         ],
 
+        storageAdd: "Add Storage",
+        storageAddTitle: "Add your own bucket",
+        storageEditTitle: "Edit storage",
+        storageName: "Name (e.g. My R2)",
+        storageEndpoint: "Endpoint",
+        storageRegion: "Region",
+        storageBucket: "Bucket",
+        storageKeyPrefix: "Key prefix (optional)",
+        storageAccessKey: "Access Key",
+        storageSecretKey: "Secret Key",
+        storageAccessKeyKeep: "Access Key (blank keeps current)",
+        storageSecretKeyKeep: "Secret Key (blank keeps current)",
+        storagePublicBase: "Public base URL",
+        storagePublicBaseHint: "Image links are built from this, usually your bucket's custom domain. The bucket is probed before saving — one that can't be written to is worse than none.",
+        storageSave: "Save",
+        storageTest: "Test only",
+        storageEdit: "Edit",
+        storageSetDefault: "Set as default",
+        storageDefaultBadge: "Default",
+        storageSaved: "Storage saved",
+        storageTestPassed: "Connected — writes work",
+        storageRemoved: "Storage removed",
+        storageDefaultSet: { name in "Uploads now go to \(name)" },
+        endpointKind: { k in
+            switch k {
+            case .r2: "Looks like Cloudflare R2"
+            case .s3: "Looks like Amazon S3"
+            case .b2: "Looks like Backblaze B2"
+            case .spaces: "Looks like DigitalOcean Spaces"
+            case .oss: "Looks like Aliyun OSS"
+            case .cos: "Looks like Tencent COS"
+            case .custom: "Custom S3-compatible service"
+            }
+        },
         location: "Storage Location",
         locationKeyNote: "Adding or changing a storage location needs access keys — see Manage on the Web below.",
         locationEmpty: "No images yet, so there's nothing to show",

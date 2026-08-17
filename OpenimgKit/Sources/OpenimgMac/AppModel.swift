@@ -152,6 +152,14 @@ final class AppModel: ObservableObject {
         d.set(editOnDrop, forKey: "editOnDrop")
     }
 
+    // 存储位置(BYOS)。改动类操作要邮箱验证码作二次因子——见后端
+    // requireCodeIfToken:这组接口能把后续上传导去别处,单靠泄露的令牌
+    // 不该做得成。
+    @Published var storageProfiles: [StorageProfile] = []
+    @Published var storageCodeSent = false
+    @Published var storageCodeSentTo = ""
+    @Published var storageCodeCooldown = 0
+
     // Stats
     @Published var summary: StorageSummary?
     @Published var transactions: [QuotaTransaction] = []
@@ -746,7 +754,8 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 if codeCooldown > 0 { codeCooldown -= 1 }
                 if pkCodeCooldown > 0 { pkCodeCooldown -= 1 }
-                if codeCooldown <= 0, pkCodeCooldown <= 0 {
+                if storageCodeCooldown > 0 { storageCodeCooldown -= 1 }
+                if codeCooldown <= 0, pkCodeCooldown <= 0, storageCodeCooldown <= 0 {
                     cooldownTask = nil
                     return
                 }
@@ -769,6 +778,10 @@ final class AppModel: ObservableObject {
                 passkeyCodeSent = true
                 pkCodeSentTo = sent.email
                 pkCodeCooldown = sent.resendIn
+            } else if purpose == .storage {
+                storageCodeSent = true
+                storageCodeSentTo = sent.email
+                storageCodeCooldown = sent.resendIn
             } else {
                 codeSent = true
                 codeSentTo = sent.email
