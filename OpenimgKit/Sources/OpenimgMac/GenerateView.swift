@@ -4,18 +4,19 @@ import OpenimgKit
 
 /// 文生图页。
 ///
-/// 三段:写描述、看还剩几次、看历史。额度放在输入框正下方而不是折进设置里
-/// ——这是一件**次数有限**的事,用户按下按钮之前就该知道自己还剩几次,以及
-/// 用完之后是等明天还是去签到。
+/// 三段自下而上:写描述、看还剩几次、看历史。输入压在底部、结果堆在上方,
+/// 是对话式的排布——刚生成的图出现在离视线最近的地方,而输入框始终在手边,
+/// 连着生成好几张时不必来回找。额度卡紧贴输入框上方:这是一件**次数有限**
+/// 的事,按下按钮之前就该知道还剩几次,以及用完之后是等明天还是去签到。
 struct GenerateView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
         VStack(spacing: 14) {
-            composer
+            history
             // 额度卡与修图页共用一份:同一个额度池,不该有两处各自的说法。
             AIQuotaCard(model: model, footnote: L.s.generate.landsInGallery)
-            history
+            composer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 26)
@@ -46,7 +47,6 @@ struct GenerateView: View {
         }
         .padding(14)
         .panelSurface(12)
-        .padding(.top, 4)
     }
 
     /// TextEditor 没有 placeholder,所以自己叠一层。`allowsHitTesting(false)`

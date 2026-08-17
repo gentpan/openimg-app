@@ -10,10 +10,12 @@ struct RetouchView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
+        // 自下而上:输入、额度、结果。与生成页同一套排布,理由见 GenerateView
+        // 的头注——结果堆在上方离视线最近,输入压在底部始终在手边。
         VStack(spacing: 14) {
-            composer
-            AIQuotaCard(model: model, footnote: L.s.retouch.landsInGallery)
             history
+            AIQuotaCard(model: model, footnote: L.s.retouch.landsInGallery)
+            composer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 26)
