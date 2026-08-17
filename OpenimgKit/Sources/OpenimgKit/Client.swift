@@ -207,6 +207,30 @@ public struct OpenimgClient: Sendable {
         _ = try decode(OK.self, data, resp)
     }
 
+    /// 开始注册 Passkey。OTP 是二次因子——令牌可达此路由,但没有邮箱验证
+    /// 码谁也注册不了新凭证(防泄露令牌给账号加后门)。
+    public func passkeyEnrollBegin(code: String) async throws -> PasskeyEnrollStart {
+        var req = request("POST", "auth/passkey/enroll/begin")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["code": code])
+        let (data, resp) = try await session.data(for: req)
+        return try decode(PasskeyEnrollStart.self, data, resp)
+    }
+
+    public func passkeyEnrollFinish(flow: String, name: String,
+                                    credential: WebAuthnRegistration) async throws {
+        struct Body: Encodable {
+            let flow: String
+            let name: String
+            let credential: WebAuthnRegistration
+        }
+        var req = request("POST", "auth/passkey/enroll/finish")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(Body(flow: flow, name: name, credential: credential))
+        let (data, resp) = try await session.data(for: req)
+        _ = try decode(OK.self, data, resp)
+    }
+
     public func passkeys() async throws -> [PasskeyCredential] {
         let (data, resp) = try await session.data(for: request("GET", "auth/passkey/list"))
         struct Wrap: Decodable { let passkeys: [PasskeyCredential]? }

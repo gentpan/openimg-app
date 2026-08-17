@@ -82,7 +82,7 @@ struct Field<C: View>: View {
                 .font(.callout)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.vertical, 11)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous).fill(.white.opacity(0.06))
         )

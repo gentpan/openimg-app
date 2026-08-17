@@ -11,6 +11,8 @@ struct SettingsView: View {
     @State private var editingName = false
     @State private var code = ""
     @State private var newPassword = ""
+    @State private var pkCode = ""
+    @State private var pkName = ""
     @FocusState private var nameFocused: Bool
 
     var body: some View {
@@ -329,12 +331,12 @@ struct SettingsView: View {
     private var watermarkCard: some View {
         SettingsCard("水印", "signature") {
             VStack(alignment: .leading, spacing: 12) {
-                TextField("水印文字（留空即不启用）", text: Binding(
-                    get: { model.wmText },
-                    set: { model.wmText = $0; model.saveWatermarkPrefs() }
-                ))
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
+                Field(icon: "signature") {
+                    TextField("水印文字（留空即不启用）", text: Binding(
+                        get: { model.wmText },
+                        set: { model.wmText = $0; model.saveWatermarkPrefs() }
+                    ))
+                }
 
                 HStack(alignment: .top, spacing: 18) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -533,10 +535,36 @@ struct SettingsView: View {
                     }
                 }
             }
-            // Enrolling needs the WebAuthn ceremony, which needs the
-            // associated-domains entitlement this build cannot carry.
-            Text("添加 Passkey 需要在网站上完成")
-                .font(.caption2).foregroundStyle(.tertiary)
+            if model.passkeyCodeSent {
+                HStack(spacing: 8) {
+                    Field(icon: "number") {
+                        TextField("6 位验证码", text: $pkCode)
+                    }
+                    .frame(width: 150)
+                    Field(icon: "pencil") {
+                        TextField("名称（如 MacBook Touch ID）", text: $pkName)
+                    }
+                    Button("添加") {
+                        Task {
+                            if await model.enrollPasskey(code: pkCode,
+                                                         name: pkName.isEmpty ? "Mac" : pkName) {
+                                pkCode = ""; pkName = ""
+                            }
+                        }
+                    }
+                    .buttonStyle(BrandButton())
+                    .disabled(pkCode.count != 6 || model.busy)
+                }
+                Button("取消") { model.passkeyCodeSent = false; pkCode = "" }
+                    .buttonStyle(LinkButton()).font(.caption2)
+            } else {
+                // 与改密码同一道二次因子:验证码先行,泄露的令牌不能给
+                // 账号加登录后门。ad-hoc 构建里系统仪式会被拒,报错文案
+                // 会解释并指去网站。
+                Button("添加 Passkey") { Task { await model.sendCode(.passkey) } }
+                    .buttonStyle(QuietButton())
+                    .disabled(model.busy)
+            }
         }
     }
 

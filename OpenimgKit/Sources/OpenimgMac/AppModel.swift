@@ -706,6 +706,9 @@ final class AppModel: ObservableObject {
 
     @Published var passkeys: [PasskeyCredential] = []
     @Published var codeSent = false
+    /// Passkey 注册的验证码状态独立于改密码——两个表单在同一张卡上,
+    /// 共用一个标志会互相误开。
+    @Published var passkeyCodeSent = false
 
     func loadPasskeys() async {
         guard connected, let c = try? client() else { return }
@@ -718,7 +721,11 @@ final class AppModel: ObservableObject {
     func sendCode(_ purpose: AccountCodePurpose) async {
         do {
             try await client().requestAccountCode(purpose: purpose)
-            codeSent = true
+            if purpose == .passkey {
+                passkeyCodeSent = true
+            } else {
+                codeSent = true
+            }
             announce("验证码已发到你的邮箱")
         } catch {
             announce(message(error))

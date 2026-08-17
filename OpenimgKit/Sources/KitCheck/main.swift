@@ -603,6 +603,40 @@ do {
     check("TokenStore 保存不抛错(\(error))", false)
 }
 
+// MARK: - WebAuthn(base64url 与注册模型)
+
+section("WebAuthn(base64url 与注册模型)")
+
+check("base64url 往返", Data(base64URL: Data([0xfb, 0xff, 0x00, 0x7e]).base64URLEncoded) == Data([0xfb, 0xff, 0x00, 0x7e]))
+check("base64url 无填充", !Data([1, 2, 3, 4, 5]).base64URLEncoded.contains("="))
+check("base64url 无 +/", {
+    let s = Data((0...255).map { UInt8($0) }).base64URLEncoded
+    return !s.contains("+") && !s.contains("/")
+}())
+check("接受带填充的输入", Data(base64URL: "AQID") == Data([1, 2, 3]) && Data(base64URL: "AQI=") == Data([1, 2]))
+check("非法输入返回 nil", Data(base64URL: "!!!") == nil)
+
+if let enc = try? JSONEncoder().encode(
+    WebAuthnRegistration(credentialID: Data([1, 2]), attestationObject: Data([3]), clientDataJSON: Data([4]))),
+   let obj = try? JSONSerialization.jsonObject(with: enc) as? [String: Any] {
+    check("注册模型 type 固定 public-key", obj["type"] as? String == "public-key")
+    check("注册模型 id 与 rawId 一致", obj["id"] as? String == obj["rawId"] as? String)
+    check("注册模型嵌套 response", (obj["response"] as? [String: Any])?["attestationObject"] != nil)
+} else {
+    check("注册模型可编码", false)
+}
+
+// go-webauthn 下发形状的解码冒烟
+let beginJSON = """
+{"flow":"f1","options":{"publicKey":{"challenge":"AQID","rp":{"id":"openimg.io","name":"Openimg"},"user":{"id":"BAUG","name":"u@example.com","displayName":"U"}}}}
+"""
+if let d = try? JSONDecoder().decode(PasskeyEnrollStart.self, from: Data(beginJSON.utf8)) {
+    check("begin 响应可解码", d.flow == "f1" && d.options.publicKey.rp.id == "openimg.io")
+    check("挑战可还原为字节", Data(base64URL: d.options.publicKey.challenge) == Data([1, 2, 3]))
+} else {
+    check("begin 响应可解码", false)
+}
+
 // MARK: - Result
 
 print("\n\(checks - failures)/\(checks) 通过")
