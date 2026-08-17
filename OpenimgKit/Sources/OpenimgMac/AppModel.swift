@@ -144,6 +144,9 @@ final class AppModel: ObservableObject {
     @Published var aiLoading = false
     /// 轮询任务。页面消失就取消——没人看着的时候没有理由每三秒问一次。
     var aiPollTask: Task<Void, Never>?
+    /// 生成页是不是还在屏幕上。轮询以它为总闸:提交与页面离开可以同时发生
+    /// (点完「生成」立刻切走),光靠 onDisappear 取消拦不住那之后才起的那一轮。
+    var aiViewVisible = false
 
     // 上传前编辑(实现在 EditorSheet.swift)
     @Published var editTarget: EditTarget?

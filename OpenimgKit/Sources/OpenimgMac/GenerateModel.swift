@@ -33,7 +33,12 @@ extension AppModel {
         return r.isEmpty ? ["1k"] : r
     }
 
-    var aiPromptLength: Int { aiPrompt.trimmingCharacters(in: .whitespacesAndNewlines).count }
+    /// 按 Unicode 标量数,不是字素簇数——后端量的是 `len([]rune(prompt))`。
+    /// 一个 👨‍👩‍👧 在 Swift 里是 1 个 Character 却是 5 个 rune,用 `count` 会
+    /// 让本地放行的描述在服务器那边撞上 400。
+    var aiPromptLength: Int {
+        aiPrompt.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.count
+    }
     var aiPromptTooLong: Bool { aiPromptLength > aiPromptLimit }
 
     var aiCanSubmit: Bool {
@@ -59,9 +64,28 @@ extension AppModel {
         if !s.enabled, section == .generate { section = .overview }
     }
 
+    /// 进入生成页。
+    ///
+    /// 可见性是轮询的总闸,所以第一件事就是把它立起来;`aiViewDisappeared`
+    /// 负责放倒。
+    func aiViewAppeared() async {
+        aiViewVisible = true
+        await aiLoadStatus()
+        // 列表为空说明这是本会话头一回进来,那一刻看到的「已完成」全是历史,
+        // 不该为它们弹提示。再次回到这一页时列表还留着上次的样子,谁是趁我
+        // 不在时落地的一目了然——那些该照常提示、照常刷图库。
+        await aiRefresh(settling: aiGenerations.isEmpty)
+    }
+
+    /// 离开生成页。没人看着的时候不该有请求在跑。
+    func aiViewDisappeared() {
+        aiViewVisible = false
+        aiPollStop()
+    }
+
     /// 拉一次历史。
     ///
-    /// `settling` 为真表示这是进页面时的首次加载:那一刻所有已完成的记录都
+    /// `settling` 为真表示这是本会话第一次加载:那一刻所有已完成的记录都
     /// 是「新看到的」,但没有一条是**刚刚**完成的,不该为它们弹提示、刷图库。
     func aiRefresh(settling: Bool = false) async {
         guard connected, let c = try? client() else { return }
@@ -71,6 +95,10 @@ extension AppModel {
         guard let page = try? await c.aiGenerations() else { return }
         aiGenerations = page.generations
         aiImages = page.images
+        // 只要还有在途的就保证有一轮在等它——⌘R 刷新可能刚发现一条从网页端
+        // 提交的记录,那时并没有循环在跑。已经在跑、或页面已经走了,这里都是
+        // 空操作(见 aiPollStart 的两道闸)。
+        if aiPending { aiPollStart() }
         guard !settling else { return }
 
         let justFinished = page.generations.filter {
@@ -79,7 +107,7 @@ extension AppModel {
         guard !justFinished.isEmpty else { return }
 
         // 有记录落地了:余额变了(失败会退还),图库多了张图。
-        aiStatus = try? await c.aiStatus()
+        await aiLoadStatus()
         if justFinished.contains(where: { $0.status == .completed }) {
             quota = try? await c.quota()
             // 与上传后一样刷新图库:那张图现在就在库里,列表停在旧的一页
@@ -103,15 +131,19 @@ extension AppModel {
             let gen = try await client().aiGenerate(
                 prompt: prompt, size: aiSize, resolution: aiResolution)
             // 先插到列表最前面,不等下一轮轮询——提交后一秒内什么都不变的
-            // 界面看起来就像没提交成功。
-            aiGenerations.insert(gen, at: 0)
-            aiStatus = try? await client().aiStatus()
+            // 界面看起来就像没提交成功。落库发生在响应回来之前,所以正好卡在
+            // 这一刻的那轮轮询可能已经把它取回来了;不查重就会得到两行同 id,
+            // ForEach 撞上重复的 Identifiable。
+            if !aiGenerations.contains(where: { $0.id == gen.id }) {
+                aiGenerations.insert(gen, at: 0)
+            }
+            await aiLoadStatus()
             announce(L.s.generate.submitted)
             aiPollStart()
         } catch {
             announce(aiMessage(error))
             // 402/429 说明额度的账本已经变了,把真实数字取回来。
-            aiStatus = try? await client().aiStatus()
+            await aiLoadStatus()
         }
     }
 
@@ -130,13 +162,17 @@ extension AppModel {
     /// 是「服务器加了一个客户端不认识的状态」这种情况——未知状态按在途处理
     /// (见 AIGenStatus 的解码),没有上限就会一直转下去。
     func aiPollStart() {
-        guard aiPollTask == nil else { return }
+        // `aiViewVisible` 而不只是「没有别的轮询在跑」:提交是异步的,点完
+        // 「生成」立刻切走时,这一句在 onDisappear 之后才执行——只看 nil 的话
+        // 会起一轮没人看的循环,一直问到出图为止。
+        guard aiViewVisible, aiPollTask == nil else { return }
         aiPollTask = Task { [weak self] in
             var rounds = 0
             while !Task.isCancelled, rounds < 200 {
                 rounds += 1
                 try? await Task.sleep(for: .seconds(3))
-                guard !Task.isCancelled, let self, connected, aiEnabled else { break }
+                guard !Task.isCancelled, let self, connected, aiEnabled, aiViewVisible
+                else { break }
                 await aiRefresh()
                 if !aiPending { break }
             }

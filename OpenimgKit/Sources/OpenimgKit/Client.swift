@@ -434,10 +434,17 @@ public struct OpenimgClient: Sendable {
             "prompt": prompt, "size": size, "resolution": resolution,
         ])
         let (data, resp) = try await session.data(for: req)
-        // 自己认状态码,不走 `failure`:那张表是按上传的语义写的,会把这里的
+        // 这几个自己认,不走 `failure`:那张表是按上传的语义写的,会把这里的
         // 429(今日次数用完,明天才有)说成「上传过于频繁,请 60 秒后再试」。
+        // 其余的仍交给通用映射——令牌过期该说令牌过期,而不是「服务器返回
+        // 401」这种既不解释也不给出路的话。
         if let http = resp as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw AIGenError.from(status: http.statusCode, body: data)
+            switch http.statusCode {
+            case 400, 402, 403, 429, 502, 503:
+                throw AIGenError.from(status: http.statusCode, body: data)
+            default:
+                throw Self.failure(status: http.statusCode, body: data, headers: http)
+            }
         }
         struct Wrap: Decodable { let generation: AIGeneration }
         return try decode(Wrap.self, data, resp).generation

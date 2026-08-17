@@ -23,7 +23,11 @@ struct GenerateStrings: Sendable {
     let generateAction: String
     let generating: String
     let submitted: String
+    /// 按钮上的悬浮说明:这件事要等。
     let takesAWhile: String
+    /// 额度卡下的脚注:出来的图去哪了。两句分开,因为它们回答的是两个问题
+    /// ——一句共用会让其中一处答非所问。
+    let landsInGallery: String
 
     // 额度
     let remainingLabel: String
@@ -74,7 +78,8 @@ extension GenerateStrings {
         generateAction: "生成",
         generating: "生成中…",
         submitted: "已提交，出图约需几十秒",
-        takesAWhile: "生成好的图会自动进图库，和手动上传的一样",
+        takesAWhile: "出图约需几十秒，期间可以去做别的",
+        landsInGallery: "生成好的图会自动进图库，和手动上传的一样",
 
         remainingLabel: "还能生成",
         times: { n in "\(n) 次" },
@@ -105,8 +110,9 @@ extension GenerateStrings {
 
         errDisabled: "这个部署没有开启 AI 生成",
         errNotVerified: "先验证邮箱才能使用生成",
-        errDailyLimit: "今天的生成次数已经用完了",
-        errMonthlyExhausted: "这个月的生成次数已经用完了",
+        // 两句都得带上出路:今天用完的等明天,这个月用完的等明天也没用。
+        errDailyLimit: "今天的生成次数已经用完了，明天再来",
+        errMonthlyExhausted: "这个月的生成次数已经用完了，签到可以再攒一些",
         errBadPrompt: { limit in "描述不能为空，也不能超过 \(limit) 字" },
         errUpstream: { reason in "上游生成服务出错：\(reason)" })
 
@@ -122,7 +128,8 @@ extension GenerateStrings {
         generateAction: "Generate",
         generating: "Generating…",
         submitted: "Submitted — this usually takes under a minute",
-        takesAWhile: "Finished images land in your gallery, same as uploaded ones",
+        takesAWhile: "Usually under a minute — feel free to do something else",
+        landsInGallery: "Finished images land in your gallery, same as uploaded ones",
 
         remainingLabel: "Left right now",
         times: { n in n == 1 ? "1 generation" : "\(n) generations" },
@@ -153,8 +160,8 @@ extension GenerateStrings {
 
         errDisabled: "This deployment doesn’t have AI generation turned on",
         errNotVerified: "Verify your email address before generating",
-        errDailyLimit: "You’ve used all of today’s generations",
-        errMonthlyExhausted: "You’ve used all of this month’s generations",
+        errDailyLimit: "You’ve used all of today’s generations — come back tomorrow",
+        errMonthlyExhausted: "You’re out for this month. Checking in daily earns more.",
         errBadPrompt: { limit in "A description is required, and it can’t exceed \(limit) characters" },
         errUpstream: { reason in "The upstream generator failed: \(reason)" })
 }

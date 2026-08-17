@@ -207,12 +207,15 @@ struct Sidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // 字标居中且放大:侧栏顶部那块留白本来就是留给它的,17pt 靠左
+            // 时那块地方看着是空的而不是宽松的。
             HStack(spacing: 0) {
-                Text("Open").font(.brand(17, .bold))
-                Text("img").font(.brand(17, .bold)).foregroundStyle(Color.brand)
+                Text("Open").font(.brand(26, .bold))
+                Text("img").font(.brand(26, .bold)).foregroundStyle(Color.brand)
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 14)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 18)
 
             search
                 .padding(.horizontal, 10)

@@ -245,6 +245,15 @@ let outOfCredits = """
 check("余额为零识别为本月用完",
       (try? dec.decode(AIStatus.self, from: Data(outOfCredits.utf8)))?.monthlyExhausted == true)
 
+// 每日上限为 0(后端视作不限)的部署里 remaining 也会是 0,但那不叫"今天
+// 用完了"——界面若照着 remaining 说话,会冒出"今天的 0 次已经用完"。
+let noDailyCap = """
+{"enabled":true,"credits":3,"used_today":2,"daily_limit":0,"monthly":50,"remaining":0,
+ "sizes":[],"resolutions":[]}
+"""
+check("每日上限为 0 时不算今日用完",
+      (try? dec.decode(AIStatus.self, from: Data(noDailyCap.utf8)))?.dailyExhausted == false)
+
 // Go 的空切片 marshal 成 null 而不是 []。
 check("generations 为 null 时解析成空数组",
       (try? dec.decode(AIGenerationPage.self,
@@ -289,6 +298,10 @@ check("402 是本月用完",
         == .monthlyExhausted("次数已用完"))
 check("503 是这个部署没开",
       AIGenError.from(status: 503, body: Data("{}".utf8)) == .disabled(""))
+// 后端在邮箱没验证时挡在额度之前,这一条与"次数用完"是两件事。
+check("403 是邮箱未验证",
+      AIGenError.from(status: 403, body: Data(#"{"error":"请先验证邮箱"}"#.utf8))
+        == .notVerified("请先验证邮箱"))
 check("没带 error 字段时退回本地兜底说法",
       AIGenError.from(status: 503, body: Data("{}".utf8)).errorDescription == "这个部署没有开启 AI 生成")
 

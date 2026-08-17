@@ -19,14 +19,10 @@ struct GenerateView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 26)
         .padding(.bottom, 18)
-        .task {
-            await model.aiLoadStatus()
-            // settling:进页面时看到的「已完成」都是老的,不该为它们弹提示。
-            await model.aiRefresh(settling: true)
-            if model.aiPending { model.aiPollStart() }
-        }
-        // 页面一走就停:没人看着的时候没有理由每三秒问一次服务器。
-        .onDisappear { model.aiPollStop() }
+        // 取状态、拉历史、按需起轮询,都在 aiViewAppeared 里;这里只管把页面
+        // 的出现与离开如实告诉 model——轮询以「页面在不在」为总闸。
+        .task { await model.aiViewAppeared() }
+        .onDisappear { model.aiViewDisappeared() }
     }
 
     // MARK: - 输入
@@ -148,7 +144,7 @@ struct GenerateView: View {
                     )
                     .frame(height: 4)
                 }
-                Text(L.s.generate.takesAWhile)
+                Text(L.s.generate.landsInGallery)
                     .font(.caption2).foregroundStyle(.tertiary)
             }
             .padding(14)
@@ -172,7 +168,9 @@ struct GenerateView: View {
                     Button(L.s.generate.goCheckin) { model.section = .overview }
                         .buttonStyle(LinkButton())
                         .font(.caption)
-                } else {
+                } else if s.dailyExhausted {
+                    // dailyExhausted 而不是 else:每日上限为 0 的部署里
+                    // remaining 也是 0,那句「今天的 0 次已经用完」是胡话。
                     Text(L.s.generate.dailyExhausted(s.dailyLimit))
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -262,7 +260,9 @@ private struct GenerationRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .panelSurface(10)
-        .help(gen.prompt)
+        // 描述在行里只显示两行,悬浮给全文;模型名跟在后面——它是「这张图
+        // 怎么来的」的一部分,但不值得占据本就拥挤的那行元信息。
+        .help("\(gen.prompt)\n\(L.s.generate.modelLabel(gen.model))")
     }
 
     @ViewBuilder
