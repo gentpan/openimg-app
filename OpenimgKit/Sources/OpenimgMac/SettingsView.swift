@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var newPassword = ""
     @State private var pkCode = ""
     @State private var pkName = ""
+    @State private var newPassword2 = ""
     @State private var avatarHover = false
     @State private var avatarDropping = false
     @FocusState private var nameFocused: Bool
@@ -503,38 +504,69 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var passwordSection: some View {
+        // 没有密码的账号(只用 OAuth/Passkey 注册)说"设置密码";旧服务器不
+        // 返回该字段时按"修改"这个保守措辞走。
+        let hasPassword = model.account?.hasPassword ?? true
+        let tooShort = !newPassword.isEmpty && newPassword.count < 8
+        let mismatch = !newPassword2.isEmpty && newPassword != newPassword2
+        let ready = code.count == 6 && newPassword.count >= 8 && newPassword == newPassword2
+
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text("修改密码").font(.callout)
+                Text(hasPassword ? "修改密码" : "设置密码").font(.callout)
                 Spacer()
-                Text(model.codeSent ? "验证码 10 分钟内有效" : "验证码会发到你的邮箱")
+                Text(model.codeSent ? "验证码 5 分钟内有效" : "验证码会发到你的邮箱")
                     .font(.caption2).foregroundStyle(.tertiary)
             }
             if model.codeSent {
+                if !model.codeSentTo.isEmpty {
+                    Text("验证码已发到 \(model.codeSentTo)")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                Field(icon: "number") {
+                    TextField("6 位验证码", text: $code)
+                }
+                .frame(maxWidth: 240)
+                Field(icon: "lock") {
+                    SecureField(hasPassword ? "新密码（至少 8 位）" : "密码（至少 8 位）",
+                                text: $newPassword)
+                }
+                Field(icon: "lock.rotation") {
+                    SecureField("再输入一次", text: $newPassword2)
+                }
+                if tooShort {
+                    Text("密码至少 8 位").font(.caption2).foregroundStyle(.orange)
+                } else if mismatch {
+                    Text("两次输入不一致").font(.caption2).foregroundStyle(.orange)
+                }
                 HStack(spacing: 8) {
-                    Field(icon: "number") {
-                        TextField("6 位验证码", text: $code)
-                    }
-                    .frame(width: 150)
-                    Field(icon: "lock") {
-                        SecureField("新密码（至少 8 位）", text: $newPassword)
-                    }
-                    Button("确认") {
+                    Button(hasPassword ? "确认修改" : "确认设置") {
                         Task {
                             if await model.changePassword(code: code, newPassword: newPassword) {
-                                code = ""; newPassword = ""
+                                code = ""; newPassword = ""; newPassword2 = ""
                             }
                         }
                     }
                     .buttonStyle(BrandButton())
-                    .disabled(code.count != 6 || newPassword.count < 8 || model.busy)
-                }
-                Button("取消") { model.codeSent = false; code = ""; newPassword = "" }
-                    .buttonStyle(LinkButton()).font(.caption2)
-            } else {
-                Button("发送验证码") { Task { await model.sendCode(.password) } }
+                    .disabled(!ready || model.busy)
+
+                    Button(model.codeCooldown > 0 ? "重发 (\(model.codeCooldown)s)" : "重发验证码") {
+                        Task { await model.sendCode(.password) }
+                    }
                     .buttonStyle(QuietButton())
-                    .disabled(model.busy)
+                    .disabled(model.codeCooldown > 0 || model.busy)
+
+                    Button("取消") {
+                        model.codeSent = false; code = ""; newPassword = ""; newPassword2 = ""
+                    }
+                    .buttonStyle(LinkButton()).font(.caption)
+                }
+            } else {
+                Button(hasPassword ? "修改密码" : "设置密码") {
+                    Task { await model.sendCode(.password) }
+                }
+                .buttonStyle(QuietButton())
+                .disabled(model.busy)
             }
         }
     }
@@ -580,15 +612,19 @@ struct SettingsView: View {
                 }
             }
             if model.passkeyCodeSent {
+                if !model.pkCodeSentTo.isEmpty {
+                    Text("验证码已发到 \(model.pkCodeSentTo)")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                Field(icon: "number") {
+                    TextField("6 位验证码", text: $pkCode)
+                }
+                .frame(maxWidth: 240)
+                Field(icon: "pencil") {
+                    TextField("名称（如 MacBook Touch ID）", text: $pkName)
+                }
                 HStack(spacing: 8) {
-                    Field(icon: "number") {
-                        TextField("6 位验证码", text: $pkCode)
-                    }
-                    .frame(width: 150)
-                    Field(icon: "pencil") {
-                        TextField("名称（如 MacBook Touch ID）", text: $pkName)
-                    }
-                    Button("添加") {
+                    Button("添加 Passkey") {
                         Task {
                             if await model.enrollPasskey(code: pkCode,
                                                          name: pkName.isEmpty ? "Mac" : pkName) {
@@ -598,9 +634,16 @@ struct SettingsView: View {
                     }
                     .buttonStyle(BrandButton())
                     .disabled(pkCode.count != 6 || model.busy)
+
+                    Button(model.pkCodeCooldown > 0 ? "重发 (\(model.pkCodeCooldown)s)" : "重发验证码") {
+                        Task { await model.sendCode(.passkey) }
+                    }
+                    .buttonStyle(QuietButton())
+                    .disabled(model.pkCodeCooldown > 0 || model.busy)
+
+                    Button("取消") { model.passkeyCodeSent = false; pkCode = ""; pkName = "" }
+                        .buttonStyle(LinkButton()).font(.caption)
                 }
-                Button("取消") { model.passkeyCodeSent = false; pkCode = "" }
-                    .buttonStyle(LinkButton()).font(.caption2)
             } else {
                 // 与改密码同一道二次因子:验证码先行,泄露的令牌不能给
                 // 账号加登录后门。ad-hoc 构建里系统仪式会被拒,报错文案

@@ -178,6 +178,9 @@ public struct Account: Codable, Sendable {
     public let uploadMode: String?
     public let variantFormat: String?
     public let maxImageWidth: Int?
+    /// 没有密码的账号(只用 OAuth/Passkey 注册的)界面上说"设置密码"而不是
+    /// "修改密码"。旧服务器不返回此字段时按 true 处理,措辞退回保守说法。
+    public let hasPassword: Bool?
 
     /// What to draw when there is no picture. Prefers the nickname over the
     /// address so a letter the user chose wins over one they did not.
@@ -188,6 +191,7 @@ public struct Account: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, email, name, role
         case avatarURL = "avatar_url"
+        case hasPassword = "has_password"
         case uploadMode = "upload_mode"
         case variantFormat = "variant_format"
         case maxImageWidth = "max_image_width"
@@ -328,6 +332,17 @@ public struct CheckinResult: Codable, Sendable {
 
 /// What a mailed code may be spent on. The server keeps these apart, so a code
 /// cannot be obtained under one purpose and presented under another.
+/// `POST /api/account/otp` 的回应。
+public struct OTPSent: Codable, Sendable {
+    public let email: String
+    public let resendIn: Int
+
+    enum CodingKeys: String, CodingKey {
+        case email
+        case resendIn = "resend_in"
+    }
+}
+
 public enum AccountCodePurpose: String, Sendable {
     case password
     case passkey

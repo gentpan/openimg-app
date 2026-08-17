@@ -187,12 +187,15 @@ public struct OpenimgClient: Sendable {
     /// `purpose` is what the code will be spent on — the server refuses a code
     /// issued for one purpose and presented for another, so a code obtained to
     /// enrol a passkey cannot be replayed to change the password.
-    public func requestAccountCode(purpose: AccountCodePurpose) async throws {
+    /// 返回码发去了哪个邮箱、以及多久后可重发——服务器本来就给这两个值,
+    /// 丢掉它们会让界面只能干说"已发送",用户无从判断该去哪封邮件里找。
+    @discardableResult
+    public func requestAccountCode(purpose: AccountCodePurpose) async throws -> OTPSent {
         var req = request("POST", "api/account/otp")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: ["purpose": purpose.rawValue])
         let (data, resp) = try await session.data(for: req)
-        _ = try decode(OK.self, data, resp)
+        return try decode(OTPSent.self, data, resp)
     }
 
     /// Changes the password. The code is the one mailed by

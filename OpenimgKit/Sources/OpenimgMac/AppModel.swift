@@ -709,6 +709,31 @@ final class AppModel: ObservableObject {
     /// Passkey 注册的验证码状态独立于改密码——两个表单在同一张卡上,
     /// 共用一个标志会互相误开。
     @Published var passkeyCodeSent = false
+    /// 验证码发去了哪个邮箱、还剩几秒可重发。与网页端同一套呈现:只说
+    /// "已发送"而不说发去哪,用户不知道该翻哪个信箱。
+    @Published var codeSentTo = ""
+    @Published var codeCooldown = 0
+    @Published var pkCodeSentTo = ""
+    @Published var pkCodeCooldown = 0
+    private var cooldownTask: Task<Void, Never>?
+
+    /// 一个计时器喂两个倒计时——两个表单各起一个 Task 会在同一秒里互相
+    /// 打断,而且退出视图时容易漏掉取消。
+    private func startCooldownTicker() {
+        guard cooldownTask == nil else { return }
+        cooldownTask = Task { [weak self] in
+            while true {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self else { return }
+                if codeCooldown > 0 { codeCooldown -= 1 }
+                if pkCodeCooldown > 0 { pkCodeCooldown -= 1 }
+                if codeCooldown <= 0, pkCodeCooldown <= 0 {
+                    cooldownTask = nil
+                    return
+                }
+            }
+        }
+    }
 
     func loadPasskeys() async {
         guard connected, let c = try? client() else { return }
@@ -720,13 +745,18 @@ final class AppModel: ObservableObject {
     /// user needs to know the request itself went through.
     func sendCode(_ purpose: AccountCodePurpose) async {
         do {
-            try await client().requestAccountCode(purpose: purpose)
+            let sent = try await client().requestAccountCode(purpose: purpose)
             if purpose == .passkey {
                 passkeyCodeSent = true
+                pkCodeSentTo = sent.email
+                pkCodeCooldown = sent.resendIn
             } else {
                 codeSent = true
+                codeSentTo = sent.email
+                codeCooldown = sent.resendIn
             }
-            announce("验证码已发到你的邮箱")
+            startCooldownTicker()
+            announce("验证码已发到 \(sent.email)")
         } catch {
             announce(message(error))
         }
