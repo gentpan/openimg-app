@@ -42,7 +42,6 @@ struct SettingsView: View {
                     watchCard
                     watermarkCard
                     locationCard
-                    siteCard
                 }
             }
             .frame(maxWidth: 980)
@@ -771,56 +770,6 @@ struct SettingsView: View {
                     .disabled(model.busy)
             }
         }
-    }
-
-    /// Everything this app cannot do, in one place.
-    ///
-    /// These are the cookie-only routes — a token must not be able to change a
-    /// password, mint more tokens, or read storage credentials, and that is a
-    /// deliberate boundary rather than a gap. But it was previously expressed
-    /// as one grey sentence in the corner of another card, which is the same as
-    /// not saying it: a Mac user is exactly the person who needs an API token,
-    /// and they had no way to find out where to get one.
-    private var siteCard: some View {
-        let links = Self.siteLinks
-        return SettingsCard(L.s.settings.siteTitle, "safari") {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(links, id: \.0) { title, detail, path in
-                    if title != links.first?.0 {
-                        Divider().overlay(Color.white.opacity(0.06))
-                    }
-                    Button {
-                        if let u = URL(string: model.server + path) {
-                            NSWorkspace.shared.open(u)
-                        }
-                    } label: {
-                        HStack(spacing: 10) {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(title).font(.callout).foregroundStyle(.primary)
-                                Text(detail).font(.caption2).foregroundStyle(.tertiary)
-                            }
-                            Spacer(minLength: 8)
-                            Image(systemName: "arrow.up.right")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .padding(.vertical, 9)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private static var siteLinks: [(String, String, String)] {
-        let s = L.s.settings
-        return [
-            (s.siteApiToken, s.siteApiTokenDetail, "/settings"),
-            (s.siteLinkProviders, s.siteLinkProvidersDetail, "/settings"),
-            (s.addPasskey, s.sitePasskeyDetail, "/settings"),
-            (s.siteDeleteAccount, "", "/settings"),
-        ]
     }
 
     private var dangerCard: some View {

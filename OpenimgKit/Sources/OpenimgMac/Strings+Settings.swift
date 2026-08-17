@@ -129,13 +129,6 @@ struct SettingsStrings: Sendable {
     let kindOwnBucket: @Sendable (String) -> String
 
     // 在网站上管理
-    let siteTitle: String
-    let siteApiToken: String
-    let siteApiTokenDetail: String
-    let siteLinkProviders: String
-    let siteLinkProvidersDetail: String
-    let sitePasskeyDetail: String
-    let siteDeleteAccount: String
 
     // 这台设备
     let device: String
@@ -289,13 +282,6 @@ extension SettingsStrings {
         kindPlatform: "平台存储池",
         kindOwnBucket: { kind in "\(kind) · 自有存储桶" },
 
-        siteTitle: "在网站上管理",
-        siteApiToken: "API Token",
-        siteApiTokenDetail: "给 PicGo、Typora、curl 等工具上传用",
-        siteLinkProviders: "绑定 Google / GitHub",
-        siteLinkProvidersDetail: "绑定要整页跳转，原生端做不了",
-        sitePasskeyDetail: "注册需要在网页里完成，删除可以在本页做",
-        siteDeleteAccount: "删除账号",
 
         device: "这台设备",
         deviceNote: "凭证保存在钥匙串里，重开应用会自动登录。退出登录只会从这台\n设备移除它，服务器上的令牌需要在网站里删除。",
@@ -447,13 +433,6 @@ extension SettingsStrings {
         kindPlatform: "Platform pool",
         kindOwnBucket: { kind in "\(kind) · Your own bucket" },
 
-        siteTitle: "Manage on the Web",
-        siteApiToken: "API Token",
-        siteApiTokenDetail: "For uploading from PicGo, Typora, curl and the like",
-        siteLinkProviders: "Link Google / GitHub",
-        siteLinkProvidersDetail: "Linking needs a full-page redirect the app can't do",
-        sitePasskeyDetail: "Enrolling has to happen on the web; deleting works right here",
-        siteDeleteAccount: "Delete Account",
 
         device: "This Device",
         deviceNote: "Your credentials live in the Keychain, so the app signs in again on its own. Signing out only removes them from this Mac — the token on the server has to be deleted on the website.",
