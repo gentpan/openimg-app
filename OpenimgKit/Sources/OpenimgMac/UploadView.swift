@@ -69,14 +69,14 @@ struct UploadView: View {
             } label: {
                 Label(L.s.upload.editThenUpload, systemImage: "crop")
             }
-            .controlSize(.small)
+            .buttonStyle(QuietButton())
             .help(L.s.upload.editHelp)
             Toggle(L.s.upload.editOnDrop, isOn: Binding(
                 get: { model.editOnDrop },
                 set: { model.editOnDrop = $0; model.saveWatermarkPrefs() }
             ))
             .toggleStyle(.checkbox)
-            .font(.caption)
+            .font(.callout)
         }
     }
 

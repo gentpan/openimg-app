@@ -192,7 +192,7 @@ struct EditorSheet: View {
                     spec.crop = EditGeometry.applyRatio(base, pixelRatio: ratio, canvas: rotatedPixelSize)
                 }
                 Button(L.s.editor.clearCrop) { spec.crop = nil; ratioID = Self.freeRatioID }
-                    .controlSize(.small)
+                    .buttonStyle(QuietButton())
                     .disabled(spec.crop == nil)
             }
 
@@ -210,7 +210,7 @@ struct EditorSheet: View {
                     _ = spec.strokes.popLast()
                     Task { await refreshPreview() }
                 }
-                .controlSize(.small)
+                .buttonStyle(QuietButton())
                 .keyboardShortcut("z", modifiers: .command)
                 .disabled(spec.strokes.isEmpty)
             }
@@ -224,7 +224,7 @@ struct EditorSheet: View {
                 }
                 Task { await refreshPreview() }
             } label: { Label(L.s.editor.rotate, systemImage: "rotate.right") }
-                .controlSize(.small)
+                .buttonStyle(QuietButton())
 
             Toggle(L.s.editor.watermark, isOn: $wmOn)
                 .toggleStyle(.checkbox)
