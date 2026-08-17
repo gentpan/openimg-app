@@ -8,9 +8,11 @@
 # 一次性前置(只需做一遍):
 #   1. 装 Developer ID Application 证书:Xcode → Settings → Accounts → 选账号
 #      → Manage Certificates… → + → Developer ID Application
-#   2. 存公证凭据(app 专用密码在 appleid.apple.com → 登录与安全 → App 专用密码):
+#   2. 存公证凭据(app 专用密码在 appleid.apple.com → 登录与安全 → App 专用密码
+#      生成;省略 --password 会弹安全提示符,密码不进 shell 历史):
 #      xcrun notarytool store-credentials openimg-notary \
-#        --apple-id 你的AppleID邮箱 --team-id 你的TEAMID --password xxxx-xxxx-xxxx-xxxx
+#        --apple-id 403010@qq.com --team-id WPDUNPG5N8
+#      验证: xcrun notarytool history --keychain-profile openimg-notary
 set -euo pipefail
 
 VERSION=${1:?用法: ./release.sh v0.2.0}
