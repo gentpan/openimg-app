@@ -54,7 +54,8 @@ public struct AIStatus: Decodable, Sendable, Equatable {
 
 /// 一条生成记录的状态。只有 completed/failed 是终态。
 public enum AIGenStatus: String, Codable, Sendable, Hashable {
-    case pending, running, completed, failed
+    /// charging 是「额度已扣、还没递交给上游」的一瞬,服务端用它做日限计数。
+    case charging, pending, running, completed, failed
 
     public var isTerminal: Bool { self == .completed || self == .failed }
 

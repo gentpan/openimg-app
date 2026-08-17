@@ -273,7 +273,7 @@ private struct GenerationRow: View {
             ZStack {
                 Rectangle().fill(.white.opacity(0.06))
                 switch gen.status {
-                case .pending, .running:
+                case .charging, .pending, .running:
                     ProgressView().controlSize(.small)
                 case .failed:
                     Image(systemName: "exclamationmark.triangle")
@@ -316,7 +316,7 @@ private struct GenerationRow: View {
         switch gen.status {
         case .completed: .success
         case .failed: .orange
-        case .pending, .running: .brand
+        case .charging, .pending, .running: .brand
         }
     }
 

@@ -96,6 +96,7 @@ extension GenerateStrings {
         historyEmptyHint: "写一句描述，试试看",
         statusLabel: { s in
             switch s {
+            case .charging: "提交中"
             case .pending: "排队中"
             case .running: "生成中"
             case .completed: "已完成"
@@ -146,6 +147,7 @@ extension GenerateStrings {
         historyEmptyHint: "Write a description and give it a try",
         statusLabel: { s in
             switch s {
+            case .charging: "Submitting"
             case .pending: "Queued"
             case .running: "Generating"
             case .completed: "Done"
