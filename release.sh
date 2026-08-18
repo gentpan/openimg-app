@@ -60,11 +60,30 @@ LAUNCH_DIR=$(mktemp -d)
 trap 'rm -rf "$LAUNCH_DIR"' EXIT
 ditto "$APP" "$LAUNCH_DIR/Openimg.app"
 xattr -r -w com.apple.quarantine "0083;00000000;Safari;" "$LAUNCH_DIR/Openimg.app"
+# 先把旧实例清干净并等它真的走掉。紧接着 open 会与上一个实例的退出撞车,
+# 表现是进程起不来——那是自检自己的假阴性,而一个不可靠的自检比没有更糟:
+# 假阴性拦住正常发布,假阳性放过坏包。
 pkill -x Openimg 2>/dev/null || true
-sleep 1
+for _ in $(seq 1 10); do pgrep -x Openimg >/dev/null || break; sleep 1; done
+sleep 2
+
 /usr/bin/open -n "$LAUNCH_DIR/Openimg.app" >"$LAUNCH_DIR/err.txt" 2>&1 || true
-sleep 6
-if pgrep -x Openimg >/dev/null; then
+
+# 轮询而不是睡一个固定值:冷启动在慢机器上要几秒,写死的等待要么太短要么
+# 白等。连续两次看到进程才算数,免得抓到一个正在退出的瞬间。
+LAUNCH_OK=0
+HITS=0
+for _ in $(seq 1 20); do
+  if pgrep -x Openimg >/dev/null; then
+    HITS=$((HITS + 1))
+    [ "$HITS" -ge 2 ] && { LAUNCH_OK=1; break; }
+  else
+    HITS=0
+  fi
+  sleep 1
+done
+
+if [ "$LAUNCH_OK" = "1" ]; then
   echo "  ✓ 能启动"
   pkill -x Openimg 2>/dev/null || true
 else
