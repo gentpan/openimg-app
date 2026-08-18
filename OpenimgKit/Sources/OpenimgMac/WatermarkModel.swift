@@ -209,10 +209,21 @@ extension AppModel {
                 announce(L.s.settings.wmGenFailed(L.s.common.failed), seconds: 6)
                 return
             }
-            wmAdopt(try WatermarkStore.store(data))
+            // 上游给回来的是一张**不透明**的图:全站只用 gpt-image-2,而它不认
+            // background/output_format 那套透明底参数。所以在这里本机抠一次
+            // ——Vision 的前景分割,与「去背景」按钮同一段代码,不额外调一次
+            // 上游、也不多花一份钱。提示词里明写了纯色背景,正是为了让它好抠。
+            //
+            // 抠不出来不算失败:那张图仍然是可用的水印,只是带着底。所以退回
+            // 原图并说一句,而不是把整件事判死。
+            let stored = try WatermarkStore.store(data)
+            let cut: Data? = await Task.detached {
+                try? WatermarkStore.withoutBackground(stored)
+            }.value
+            wmAdopt(cut ?? stored)
             wmKind = .image
             saveWatermarkPrefs()
-            announce(L.s.settings.wmGenDone)
+            announce(cut != nil ? L.s.settings.wmGenDone : L.s.settings.wmGenDoneOpaque)
         } catch {
             announce(wmMessage(error), seconds: 6)
         }

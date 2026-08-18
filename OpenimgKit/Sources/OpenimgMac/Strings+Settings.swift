@@ -126,6 +126,8 @@ struct SettingsStrings: Sendable {
     let wmGenSubmitted: String
     let wmGenPending: String
     let wmGenDone: String
+    /// 抠图没抠出来时的说法:图能用,只是带着底。
+    let wmGenDoneOpaque: String
     let wmGenFailed: @Sendable (String) -> String
     let wmGenNote: String
     let wmErrTooLarge: @Sendable (Int) -> String
@@ -305,6 +307,7 @@ extension SettingsStrings {
         wmGenSubmitted: "已提交，通常几十秒出图",
         wmGenPending: "正在生成…",
         wmGenDone: "水印图已更新",
+        wmGenDoneOpaque: "水印已生成，但背景没能自动抠掉——可以点「去背景」再试",
         wmGenFailed: { reason in "生成水印失败：\(reason)" },
         wmGenNote: "透明背景需要专门的模型，所以这一条固定用 gpt-image-1，比例锁 1:1、画质锁 1k——水印最终只按画面宽度的十几个百分点渲染，出 4k 只是白花最贵的一档。与其它 AI 产出一样计入额度、一样进图库，同时把本机这份设成当前水印。",
         wmErrTooLarge: { mb in "图片太大了，请选 \(mb) MB 以内的文件" },
@@ -489,6 +492,7 @@ extension SettingsStrings {
         wmGenSubmitted: "Submitted — this usually takes under a minute",
         wmGenPending: "Generating…",
         wmGenDone: "Watermark image updated",
+        wmGenDoneOpaque: "Watermark ready, but the background could not be removed — try “Remove Background”",
         wmGenFailed: { reason in "Could not generate the watermark: \(reason)" },
         wmGenNote: "A transparent background needs a specific model, so this one always runs on gpt-image-1, locked to 1:1 and the 1k tier — the watermark is only ever rendered at a low double-digit percentage of the picture's width, so 4K would just spend the priciest tier for pixels nobody sees. It counts against your allowance and lands in your library like any other AI image; the local copy is set as the current watermark at the same time.",
         wmErrTooLarge: { mb in "That image is too large — pick a file under \(mb) MB" },
