@@ -563,8 +563,11 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 // 高度跟 Metrics.control 走,和同屏的输入框、按钮对齐。分段
-                // 控件不给高度时用的是系统默认值,比这一套里别的控件矮一截。
-                .frame(width: 180, height: Metrics.control)
+                // 用 controlSize 而不是 frame:frame 对 NSSegmentedControl 只是
+                // 把它居中放进一个更高的盒子里,画出来还是原来那么高。large
+                // 这一档正好落在 Metrics.control 附近。
+                .controlSize(.large)
+                .frame(width: 180)
                 .accessibilityLabel(L.s.settings.wmMode)
 
                 if model.wmKind == .text {
@@ -679,18 +682,23 @@ struct SettingsView: View {
                         Image(systemName: "photo").foregroundStyle(.tertiary)
                     }
                 }
-                .frame(width: 76, height: 76)
+                .frame(width: 64, height: 64)
                 .overlay(RoundedRectangle(cornerRadius: 4)
                     .stroke(.white.opacity(0.12), lineWidth: 1))
 
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
+                        // 统一样式而不是留系统默认:同一张卡片里已经有 Pill、
+                        // BrandButton 与 Field 三种高度,再混进一个系统按钮
+                        // (随 macOS 版本变)就凑不齐任何一条基准线了。
                         Button(model.wmImagePNG == nil
                                ? L.s.settings.wmChooseImage : L.s.settings.wmReplaceImage) {
                             model.wmChooseImage()
                         }
+                        .buttonStyle(QuietButton())
                         if model.wmImagePNG != nil {
                             Button(L.s.settings.wmClearImage) { model.wmClearImage() }
+                                .buttonStyle(QuietButton())
                         }
                     }
                     if model.wmImagePNG == nil {
@@ -722,7 +730,10 @@ struct SettingsView: View {
                     Button(L.s.settings.wmGenButton) {
                         Task { await model.wmGenerate() }
                     }
+                    // 并排在 Field 旁边,高度跟 Metrics.field 走而不是 control
+                    // ——同一行里差六个点,一眼就看得出没对齐。
                     .buttonStyle(BrandButton())
+                    .frame(height: Metrics.field)
                     .disabled(!model.wmCanGenerate)
                 }
                 // 在途时说清楚"还在跑",否则按钮变灰看起来像是坏了。

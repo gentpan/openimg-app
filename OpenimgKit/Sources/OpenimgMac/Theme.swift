@@ -14,7 +14,14 @@ import SwiftUI
 /// and obvious the moment two of them share a row. A fixed height is also
 /// stable across fonts, where padding is not.
 enum Metrics {
+    /// 独立控件的高度:按钮、Pill、工具格子。
     static let control: CGFloat = 32
+    /// 输入行(Field)的高度。
+    ///
+    /// 比 control 高一档是有意的:输入框要装下光标和一行 callout,挤到 32 会
+    /// 显得局促。但**并排放在 Field 旁边的按钮要用这个数,不是 control**
+    /// ——同一行里两个高度差六个点,肉眼一看就是没对齐。
+    static let field: CGFloat = 38
 }
 
 /// 品牌色相。与网站的 `data-brand` 同一套取值,两端切换后观感一致。
