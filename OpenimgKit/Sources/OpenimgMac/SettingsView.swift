@@ -77,16 +77,24 @@ struct SettingsView: View {
                 HStack(alignment: .top, spacing: 14) {
                     avatarWell(a)
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        nameField(a)
-                        Text(a.email).font(.callout).foregroundStyle(.secondary)
-                        HStack(spacing: 6) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        // 徽章贴着昵称,不另起一行。
+                        //
+                        // 角色是这个人的属性,挨着名字才读得顺;而单独占一行会
+                        // 把「名字 + 邮箱」这一组从中间劈开——那两行本来是同
+                        // 一件事(这是谁)。昵称框封顶 260pt,右边本来就空着。
+                        HStack(spacing: 8) {
+                            nameField(a)
                             tag(a.role)
                             // Role and tier are separate fields that happen to
                             // carry the same word for admins; printing both
                             // gives "admin admin".
                             if let t = model.quota?.tier, t.name != a.role { tag(t.name) }
+                            Spacer(minLength: 0)
                         }
+                        Text(a.email)
+                            .font(.callout).foregroundStyle(.secondary)
+                            .padding(.leading, 8)   // 对齐到昵称框的文字起点
                     }
                     Spacer(minLength: 0)
                 }
