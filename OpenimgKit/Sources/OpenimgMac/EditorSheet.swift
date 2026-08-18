@@ -128,6 +128,12 @@ struct EditorCanvas: View {
     @State private var brush = 0.018            // 归一化到对角线
     @State private var wmOn = false
     @State private var preview: CGImage?
+    /// 预览底图(解码+变换+增强+抠图的结果)与它的生成键。
+    ///
+    /// 缓存它是因为这几步里有 Vision 的前景分割,一次几百毫秒;而调色是连续
+    /// 滑块,拖一次能来几十帧。键相等就直接复用,只重跑便宜的那一半。
+    @State private var previewBase: CGImage?
+    @State private var previewBaseKey: ImageEdit.PreviewBaseKey?
     /// 源图像素尺寸,头部读取——画布几何基准从它+旋转次数推导,不依赖
     /// 预览是否渲染完,旋转窗口期的比例/手势才不会用错画布。
     @State private var sourcePixelSize: CGSize = .zero
@@ -235,8 +241,9 @@ struct EditorCanvas: View {
                         return
                     }
                     guard let ratio = Self.ratios.first(where: { $0.id == id })?.ratio else { return }
-                    let base = spec.crop ?? CGRect(x: 0, y: 0, width: 1, height: 1)
-                    spec.crop = EditGeometry.applyRatio(base, pixelRatio: ratio, canvas: rotatedPixelSize)
+                    // 走 EditSpec.apply:它从整幅按比例重新起算(保留原框中心),
+                    // 而不是拿当前框再削一刀——后者切来切去只会越切越小。
+                    spec.apply(.ratio(ratio), canvas: rotatedPixelSize)
                 }
                 Button(L.s.editor.clearCrop) { spec.crop = nil; ratioID = Self.freeRatioID }
                     .buttonStyle(QuietButton())
@@ -279,7 +286,7 @@ struct EditorCanvas: View {
                 .toggleStyle(.checkbox)
                 .disabled(model.watermarkSpec() == nil)
                 .help(model.watermarkSpec() == nil
-                      ? L.s.editor.watermarkNeedsText : L.s.editor.watermarkHelp)
+                      ? L.s.editor.watermarkNeedsSetup : L.s.editor.watermarkHelp)
 
             Spacer()
             if rendering { ProgressView().controlSize(.small) }
@@ -552,7 +559,41 @@ struct EditorCanvas: View {
 
     // MARK: - 水印预览
 
+    @ViewBuilder
     private func watermarkOverlay(_ wm: WatermarkSpec, fit: CGRect) -> some View {
+        switch wm.kind {
+        case .text: textWatermarkOverlay(wm, fit: fit)
+        case .image: imageWatermarkOverlay(wm, fit: fit)
+        }
+    }
+
+    /// 图片水印的叠加层。锚点几何与尺寸都取自 EditGeometry,与渲染同源——
+    /// 理由与文字那边完全一样,见下。
+    private func imageWatermarkOverlay(_ wm: WatermarkSpec, fit: CGRect) -> some View {
+        let box = cropRect(in: fit)
+        // 位图取自 model 而不是现解 wm.imagePNG:两者是同一份字节(这份配方
+        // 正是从那里来的),而 body 一秒能跑几十次,每次解一张 1024px 的 PNG
+        // 是白烧 CPU。
+        let logo = model.wmImagePreview
+        let size = EditGeometry.watermarkImageSize(
+            logo: logo?.size ?? .zero, canvasWidth: box.width, scale: wm.scale)
+        let o = EditGeometry.watermarkOrigin(
+            anchor: wm.anchor, textSize: size, canvas: box.size,
+            margin: EditGeometry.watermarkImageMargin(canvas: box.size))
+        return Group {
+            if let logo, size.width >= 1, size.height >= 1 {
+                Image(nsImage: logo)
+                    .resizable()
+                    .frame(width: size.width, height: size.height)
+                    .opacity(wm.opacity)
+                    .position(x: box.minX + o.x + size.width / 2,
+                              y: box.minY + (box.height - o.y) - size.height / 2)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func textWatermarkOverlay(_ wm: WatermarkSpec, fit: CGRect) -> some View {
         // 与渲染同一套几何:成品水印打在**裁剪后**的画布上,预览基准也必须
         // 是裁剪框(没有裁剪时即整幅)——否则裁剪+水印同开时位置和字号都
         // 是错的。字宽用与渲染同源的 CTLine 度量,不估算(0.62em/字对 CJK
@@ -633,7 +674,22 @@ struct EditorCanvas: View {
         s.crop = nil
         s.watermark = nil
         let src = source
-        let img = await Task.detached { ImageEdit.preview(source: src, spec: s) }.value
+        // 底图与调色分两步:底图(解码+变换+增强+抠图)只在这几项真的变了才
+        // 重算,滑块只付得起的那一半钱。键由 Kit 定义,漏比一个字段的表现是
+        // "关掉抠图预览没变",在界面上几乎复现不了。
+        let key = ImageEdit.PreviewBaseKey(source: src, spec: s)
+        var base = key == previewBaseKey ? previewBase : nil
+        if base == nil {
+            let made = await Task.detached { ImageEdit.prepareBase(source: src, spec: s) }.value
+            guard gen == previewGen else { return }
+            previewBase = made
+            previewBaseKey = made == nil ? nil : key
+            base = made
+        }
+        var img: CGImage?
+        if let base {
+            img = await Task.detached { ImageEdit.applyAdjustments(base, spec: s) }.value
+        }
         guard gen == previewGen else { return }
         preview = img
         pendingStroke = []

@@ -1180,9 +1180,12 @@ check("显式选择盖过源格式",
 check("写不了 WebP 时有损换 JPEG",
       ExportFormat.resolve(requested: .webp, sourceType: .png, requiresAlpha: false,
                            writable: noWebP) == .jpeg)
-check("auto 遇到 WebP 源且写不了 WebP 也要换",
+// auto 的语义是"别改我的图":用户根本没表态要有损。WebP 源退到 JPEG 会一次吞
+// 两样东西——alpha(WebP 常带透明,落到 JPEG 是黑底)和一代画质(源已经是有损,
+// 再编一次是二次损失),而这一切是静默发生的。退 PNG:无损、保 alpha。
+check("auto 遇到 WebP 源且写不了 WebP 时退 PNG 而不是 JPEG",
       ExportFormat.resolve(requested: .auto, sourceType: .webP, requiresAlpha: false,
-                           writable: noWebP) == .jpeg)
+                           writable: noWebP) == .png)
 // alpha 最强:抠图产物落到 JPEG 就是一张黑底废图。
 check("抠图把 JPEG 顶成 PNG",
       ExportFormat.resolve(requested: .jpeg, sourceType: .jpeg, requiresAlpha: true,
@@ -1597,10 +1600,10 @@ func decodedBytes(_ url: URL) -> Data? {
     return data as Data
 }
 
-check("StripLevel.none 不产出文件", ImageMetadata.strippedCopy(of: dirtyJPEG, level: .none) == nil)
+check("StripLevel.none 返回 notNeeded", ImageMetadata.strippedCopy(of: dirtyJPEG, level: .none) == .notNeeded)
 
 // .location:只拿掉定位,曝光参数与机型留着(摄影者要的那部分)。
-if let out = ImageMetadata.strippedCopy(of: dirtyJPEG, level: .location) {
+if let out = ImageMetadata.strippedCopy(of: dirtyJPEG, level: .location).strippedURL {
     defer { try? FileManager.default.removeItem(at: out.deletingLastPathComponent()) }
     let e = ImageMetadata.exif(out)
     check(".location 后读不到坐标", e.latitude == nil && e.longitude == nil && !e.hasLocation)
@@ -1615,12 +1618,15 @@ if let out = ImageMetadata.strippedCopy(of: dirtyJPEG, level: .location) {
     // 剥的是标签不是像素:AddImageFromSource 整段搬运压缩数据,解码结果必须
     // 逐字节相同。这条一旦失守,等于给每张上传的 JPEG 白叠一代有损。
     check(".location 像素逐字节不变", decodedBytes(dirtyJPEG) == decodedBytes(out))
+    // 方向必须活过每一档:JPEG 的像素常是躺着存的,删掉方向标签整张图就横
+    // 过来了——那不是隐私保护,是毁图。
+    check(".location 方向标签存活", ImageMetadata.read(out)?.orientation == 6)
 } else {
     check(".location 剥离成功", false)
 }
 
 // .identifying:默认档,定位 + 设备身份全清,曝光参数留下。
-if let out = ImageMetadata.strippedCopy(of: dirtyJPEG, level: .identifying) {
+if let out = ImageMetadata.strippedCopy(of: dirtyJPEG, level: .identifying).strippedURL {
     defer { try? FileManager.default.removeItem(at: out.deletingLastPathComponent()) }
     let e = ImageMetadata.exif(out)
     check(".identifying 后读不到坐标", !e.hasLocation && e.altitude == nil)
@@ -1642,7 +1648,7 @@ if let out = ImageMetadata.strippedCopy(of: dirtyJPEG, level: .identifying) {
 }
 
 // .all:除方向外全清。
-if let out = ImageMetadata.strippedCopy(of: dirtyJPEG, level: .all) {
+if let out = ImageMetadata.strippedCopy(of: dirtyJPEG, level: .all).strippedURL {
     defer { try? FileManager.default.removeItem(at: out.deletingLastPathComponent()) }
     let e = ImageMetadata.exif(out)
     check(".all 后 EXIF 为空", e.isEmpty)
@@ -1662,6 +1668,135 @@ if let out = ImageMetadata.strippedCopy(of: dirtyJPEG, level: .all) {
 check("residual 能认出脏文件", !ImageMetadata.residual(dirtyJPEG).isPrivacyClean)
 check("residual 认出定位", ImageMetadata.residual(dirtyJPEG).hasLocation)
 check("residual 认出设备", ImageMetadata.residual(dirtyJPEG).hasDeviceInfo)
+
+/// 造一张只带某一组元数据的小 JPEG。参数直接是属性字典,好让每条断言只留
+/// 它要测的那一处线索——多一处就说不清是谁让断言通过的。
+@MainActor
+func makeTagged(_ name: String, _ props: [CFString: Any]) -> URL {
+    let ctx = CGContext(data: nil, width: 8, height: 6, bitsPerComponent: 8, bytesPerRow: 0,
+                        space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    let u = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+    let d = CGImageDestinationCreateWithURL(u as CFURL, UTType.jpeg.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(d, ctx.makeImage()!, props as CFDictionary)
+    CGImageDestinationFinalize(d)
+    return u
+}
+
+// IPTC 里的地点是 GPS 之外的第二份住址。展示用的 parseExif 只解析
+// {Exif}/{TIFF}/{ExifAux}/{GPS} 四本字典,根本看不见 IPTC——回读校验要是也走
+// 那条路,就会对一张写着"北京 东城区"的图给出"已剥干净"的假保证。这一组断言
+// 盯的正是这件事:同一张图,展示路径说没有,残留扫描必须说有。
+if true {
+    // 只有 IPTC 地点 + 方向:没有 GPS、没有机型。多留一处线索,断言就可能是
+    // "因为别的原因"通过的,那就测不出 IPTC 到底可不可见了。
+    let u = makeTagged("kitcheck-iptc-only.jpg", [
+        kCGImagePropertyOrientation: 6,
+        kCGImagePropertyIPTCDictionary: [
+            kCGImagePropertyIPTCCity: "北京",
+            kCGImagePropertyIPTCSubLocation: "东城区",
+        ] as [CFString: Any],
+    ])
+    defer { try? FileManager.default.removeItem(at: u) }
+
+    check("IPTC 地点在展示用的 EXIF 解析里看不见", !ImageMetadata.exif(u).hasLocation)
+    check("residual 认出只有 IPTC 的地点", ImageMetadata.residual(u).hasLocation)
+    check("只有 IPTC 地点时不算设备信息", !ImageMetadata.residual(u).hasDeviceInfo)
+    // 有东西要删,所以不能走 notNeeded 那条捷径。
+    check("有 IPTC 地点就不是 notNeeded",
+          ImageMetadata.strippedCopy(of: u, level: .location) != .notNeeded)
+    if let out = ImageMetadata.strippedCopy(of: u, level: .location).strippedURL {
+        defer { try? FileManager.default.removeItem(at: out.deletingLastPathComponent()) }
+        check("剥离后 IPTC 地点确实没了", !ImageMetadata.residual(out).hasLocation)
+        check("剥 IPTC 后方向标签仍在", ImageMetadata.read(out)?.orientation == 6)
+    } else {
+        check("只有 IPTC 的图剥离成功", false)
+    }
+}
+
+// XMP 里的作者署名走自定义命名空间,属性字典里没有对应键。这条与上面的 IPTC
+// 是同一个问题的另一面:残留扫描必须自己去翻 XMP 标签,而不是指望属性字典。
+if true {
+    let ctx = CGContext(data: nil, width: 4, height: 4, bitsPerComponent: 8, bytesPerRow: 0,
+                        space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    let u = FileManager.default.temporaryDirectory.appendingPathComponent("kitcheck-xmp-creator.jpg")
+    let d = CGImageDestinationCreateWithURL(u as CFURL, UTType.jpeg.identifier as CFString, 1, nil)!
+    let md = CGImageMetadataCreateMutable()
+    CGImageMetadataRegisterNamespaceForPrefix(
+        md, "http://purl.org/dc/elements/1.1/" as CFString, "dc" as CFString, nil)
+    if let tag = CGImageMetadataTagCreate("http://purl.org/dc/elements/1.1/" as CFString,
+                                          "dc" as CFString, "creator" as CFString,
+                                          .string, "西风" as CFString) {
+        CGImageMetadataSetTagWithPath(md, nil, "dc:creator" as CFString, tag)
+    }
+    CGImageDestinationAddImageAndMetadata(d, ctx.makeImage()!, md, nil)
+    CGImageDestinationFinalize(d)
+    defer { try? FileManager.default.removeItem(at: u) }
+
+    check("dc:creator 在展示用的 EXIF 解析里看不见", ImageMetadata.exif(u).isEmpty)
+    check("residual 认出 XMP 里的作者署名", ImageMetadata.residual(u).hasDeviceInfo)
+    if let out = ImageMetadata.strippedCopy(of: u, level: .identifying).strippedURL {
+        defer { try? FileManager.default.removeItem(at: out.deletingLastPathComponent()) }
+        check("剥离后 XMP 作者署名回读为空", !ImageMetadata.residual(out).hasDeviceInfo)
+    } else {
+        check("只有 XMP 署名的图剥离成功", false)
+    }
+}
+
+// StripOutcome 的存在理由:「不用剥」和「剥不成」必须是两个值。旧接口两者都
+// 是 nil,调用方只能一律原样上传,于是最该被拦下的那张(有定位却剥不掉)反而
+// 直接上了公网。
+if true {
+    // 干净的图:没东西可删 → notNeeded,且不产出临时文件(重写容器会换掉
+    // SHA,秒传去重与监控清单都跟着落空,不值得为一张本来就干净的图付这笔账)。
+    let clean = ImageMetadata.strippedCopy(of: editPNG, level: .identifying)
+    check("干净的图返回 notNeeded", clean == .notNeeded)
+    check("notNeeded 不产出临时文件", clean.strippedURL == nil)
+    check("notNeeded 允许原样上传", clean.allowsOriginal)
+
+    // 剥不成的图:同样"没有产出",但结果必须与上面那个可区分,且不许放行。
+    let notAnImage = FileManager.default.temporaryDirectory
+        .appendingPathComponent("kitcheck-not-an-image.jpg")
+    try? Data("这不是图片".utf8).write(to: notAnImage)
+    defer { try? FileManager.default.removeItem(at: notAnImage) }
+    let bad = ImageMetadata.strippedCopy(of: notAnImage, level: .identifying)
+    check("读不出的文件报 unsupported(.unreadable)", bad == .unsupported(.unreadable))
+    check("剥不成与不用剥是两个值", bad != clean)
+    check("剥不成不许原样上传", !bad.allowsOriginal)
+    check("剥不成也没有产物可传", bad.strippedURL == nil)
+
+    // 回读失败同样是阻断性的。这一档没法在自检里稳定造出来(要 ImageIO 真的
+    // 删漏),但类型层面的承诺得钉住:它绝不能被当成"没做,照旧传"。
+    let failed = StripOutcome.verificationFailed(
+        MetadataResidual(hasLocation: true, hasDeviceInfo: false))
+    check("verificationFailed 不许原样上传", !failed.allowsOriginal)
+    check("verificationFailed 没有产物", failed.strippedURL == nil)
+    check("verificationFailed 与 notNeeded 可区分", failed != .notNeeded)
+    check("只有 notNeeded 放行原件",
+          StripOutcome.notNeeded.allowsOriginal
+          && !StripOutcome.unsupported(.animated).allowsOriginal
+          && !StripOutcome.unsupported(.writeFailed).allowsOriginal)
+}
+
+// 动图:没有可删的东西就照常放行(否则挂个满是 GIF 的目录会一张都传不上去),
+// 有可删的东西才拦。前半句是这条断言要守的——剥离不该顺手把动图上传砍掉。
+if true {
+    let ctx = CGContext(data: nil, width: 4, height: 4, bitsPerComponent: 8, bytesPerRow: 0,
+                        space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    let u = FileManager.default.temporaryDirectory.appendingPathComponent("kitcheck-anim.gif")
+    let d = CGImageDestinationCreateWithURL(u as CFURL, UTType.gif.identifier as CFString, 2, nil)!
+    let frame = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.1]] as CFDictionary
+    CGImageDestinationAddImage(d, ctx.makeImage()!, frame)
+    CGImageDestinationAddImage(d, ctx.makeImage()!, frame)
+    CGImageDestinationFinalize(d)
+    defer { try? FileManager.default.removeItem(at: u) }
+
+    check("造出来的确实是多帧", ImageMetadata.read(u)?.isAnimated == true)
+    check("无元数据的动图照常放行",
+          ImageMetadata.strippedCopy(of: u, level: .identifying) == .notNeeded)
+}
 
 // XMP 是 EXIF 之外的第二套元数据,常带 GPS 与作者的副本。ImageMeta 没为它
 // 写任何专门代码,靠的是"传了属性字典 ImageIO 就重建整份 XMP"这条实测行为
@@ -1706,7 +1841,7 @@ if true {
     check("样张 XMP 确实带定位与作者",
           beforeTags.contains("GPSLatitude") && beforeTags.contains("creator"))
     check("XMP 里的定位也被 residual 认出", ImageMetadata.residual(u).hasLocation)
-    if let out = ImageMetadata.strippedCopy(of: u, level: .identifying) {
+    if let out = ImageMetadata.strippedCopy(of: u, level: .identifying).strippedURL {
         defer { try? FileManager.default.removeItem(at: out.deletingLastPathComponent()) }
         let afterTags = xmpNames(out)
         check("剥离后 XMP 无定位",
@@ -1792,6 +1927,645 @@ if true {
         check("预设端到端渲染成功", false)
     }
 }
+
+// MARK: - EXIF 方向(竖拍画布)
+
+section("EXIF 方向(竖拍画布)")
+
+/// 存储尺寸(不套方向),用来验"显示尺寸 ≠ 存储尺寸"这件事本身。
+func storedSize(_ url: URL) -> CGSize? {
+    guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+          let p = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+          let w = p[kCGImagePropertyPixelWidth] as? Int,
+          let h = p[kCGImagePropertyPixelHeight] as? Int else { return nil }
+    return CGSize(width: w, height: h)
+}
+
+func writePNG(_ img: CGImage, _ name: String) -> URL {
+    let u = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+    let d = CGImageDestinationCreateWithURL(u as CFURL, UTType.png.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(d, img, nil)
+    CGImageDestinationFinalize(d)
+    return u
+}
+
+// 40x20 存储、orientation=6(顺时针转 90° 才是正的)。手机竖拍就是这个样子:
+// 传感器横着存,靠标签说"请转过来"。
+let orientedJPEG: URL = {
+    let ctx = CGContext(data: nil, width: 40, height: 20, bitsPerComponent: 8, bytesPerRow: 0,
+                        space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    ctx.setFillColor(CGColor(red: 0, green: 0, blue: 1, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: 40, height: 20))
+    let u = FileManager.default.temporaryDirectory.appendingPathComponent("kitcheck-orient6.jpg")
+    let d = CGImageDestinationCreateWithURL(u as CFURL, UTType.jpeg.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(d, ctx.makeImage()!,
+                               [kCGImagePropertyOrientation: 6] as CFDictionary)
+    CGImageDestinationFinalize(d)
+    return u
+}()
+defer { try? FileManager.default.removeItem(at: orientedJPEG) }
+
+// 样张自身先立住:方向标签没写进去的话,下面几条会"因为别的原因"通过。
+check("样张确实带 orientation=6", {
+    guard let src = CGImageSourceCreateWithURL(orientedJPEG as CFURL, nil),
+          let p = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] else { return false }
+    return (p[kCGImagePropertyOrientation] as? Int) == 6
+}())
+check("样张存储尺寸是横的 40x20", storedSize(orientedJPEG) == CGSize(width: 40, height: 20))
+
+// 画布基准必须是**显示**尺寸:preview / render 都带 WithTransform,把方向烙进
+// 像素,画布是竖的。这里返回横的,竖拍照片的比例裁剪与尺寸预设就全是错的。
+check("pixelSize 套 EXIF 方向:竖拍返回 20x40",
+      ImageEdit.pixelSize(of: orientedJPEG) == CGSize(width: 20, height: 40))
+
+if true {
+    var s = EditSpec()
+    s.exportFormat = .png   // 只为过 hasEdits 闸门,不动任何几何
+    if let out = ImageEdit.render(source: orientedJPEG, spec: s) {
+        defer { try? FileManager.default.removeItem(at: out.deletingLastPathComponent()) }
+        check("pixelSize 等于 render 产物尺寸(方向口径一致)",
+              storedSize(out) == ImageEdit.pixelSize(of: orientedJPEG))
+    } else {
+        check("pixelSize 等于 render 产物尺寸(方向口径一致)", false)
+    }
+}
+check("preview 画布同样是竖的", {
+    guard let p = ImageEdit.preview(source: orientedJPEG, spec: EditSpec(), maxPixel: 200) else { return false }
+    return p.width < p.height
+}())
+
+// 方向 1-4 只是镜像/180°,不换轴——别把"套方向"做成"一律转置"。
+check("orientation=1 不换宽高", {
+    let ctx = CGContext(data: nil, width: 40, height: 20, bitsPerComponent: 8, bytesPerRow: 0,
+                        space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    let u = FileManager.default.temporaryDirectory.appendingPathComponent("kitcheck-orient1.jpg")
+    let d = CGImageDestinationCreateWithURL(u as CFURL, UTType.jpeg.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(d, ctx.makeImage()!, [kCGImagePropertyOrientation: 1] as CFDictionary)
+    CGImageDestinationFinalize(d)
+    defer { try? FileManager.default.removeItem(at: u) }
+    return ImageEdit.pixelSize(of: u) == CGSize(width: 40, height: 20)
+}())
+
+// MARK: - 限宽来源(倍率乘不乘得动)
+
+section("限宽来源(倍率乘不乘得动)")
+
+check("默认不限宽", EditSpec().widthLimit == .none && EditSpec().effectiveMaxWidth == 0)
+check("写 exportMaxWidth 记成手填", {
+    var s = EditSpec()
+    s.exportMaxWidth = 800
+    return s.widthLimit == .manual(800) && !s.widthLimit.isPreset && s.exportMaxWidth == 800
+}())
+check("写 0 等于取消限宽", {
+    var s = EditSpec()
+    s.exportMaxWidth = 800
+    s.exportMaxWidth = 0
+    return s.widthLimit == .none && s.effectiveMaxWidth == 0
+}())
+check("exact 预设写的是 preset 来源", {
+    var s = EditSpec()
+    s.apply(.exact(PixelSize(1080, 1440)), canvas: CGSize(width: 4000, height: 3000))
+    return s.widthLimit == .preset(1080) && s.widthLimit.isPreset
+}())
+
+// 核心那条:exact 的语义是"锁死平台尺寸"。倍率乘穿它会得到 2160×2880 ——
+// 既不是那个平台的规格,也白传一倍字节。
+check("预设限宽:任何倍率都还是预设宽", ExportScale.allCases.allSatisfy { sc in
+    var s = EditSpec()
+    s.widthLimit = .preset(1080)
+    s.exportScale = sc
+    return s.effectiveMaxWidth == 1080
+})
+check("手填限宽:倍率照旧生效(别把这条一起改没了)", ExportScale.allCases.allSatisfy { sc in
+    var s = EditSpec()
+    s.exportMaxWidth = 800
+    s.exportScale = sc
+    return s.effectiveMaxWidth == Int((800 * sc.rawValue).rounded())
+})
+
+// 端到端:预设 + 倍率,产物宽必须等于预设宽。字段对不等于渲染对——这条盯的
+// 是 render 里真正用到的 effectiveMaxWidth。
+if true {
+    let src = makeSamplePNG(width: 2000, height: 1500)
+    defer { try? FileManager.default.removeItem(at: src) }
+    let canvas = CGSize(width: 2000, height: 1500)
+    var widths: [Int] = []
+    var heights: [Int] = []
+    for sc in ExportScale.allCases {
+        var s = EditSpec()
+        s.apply(SizePresets.preset(id: "x.post.single")!.intent, canvas: canvas)
+        s.exportScale = sc
+        if let out = ImageEdit.render(source: src, spec: s), let size = storedSize(out) {
+            widths.append(Int(size.width))
+            heights.append(Int(size.height))
+            try? FileManager.default.removeItem(at: out.deletingLastPathComponent())
+        }
+    }
+    check("预设端到端:四档倍率产物宽都是 1600(\(widths))",
+          widths.count == ExportScale.allCases.count && widths.allSatisfy { $0 == 1600 })
+    check("预设端到端:高度也守在 900(±1)",
+          heights.count == ExportScale.allCases.count && heights.allSatisfy { abs($0 - 900) <= 1 })
+}
+
+// MARK: - 换比例可逆(裁剪框不缩水)
+
+section("换比例可逆(裁剪框不缩水)")
+
+let ratioCanvas = CGSize(width: 4000, height: 3000)
+
+check("同一比例连套两次,框不变", {
+    var s = EditSpec()
+    s.apply(.ratio(16.0 / 9), canvas: ratioCanvas)
+    let once = s.crop!
+    s.apply(.ratio(16.0 / 9), canvas: ratioCanvas)
+    let twice = s.crop!
+    return abs(once.minX - twice.minX) < 1e-9 && abs(once.minY - twice.minY) < 1e-9
+        && abs(once.width - twice.width) < 1e-9 && abs(once.height - twice.height) < 1e-9
+}())
+check("16:9 → 1:1 → 16:9 回到原样", {
+    var a = EditSpec()
+    a.apply(.ratio(16.0 / 9), canvas: ratioCanvas)
+    let direct = a.crop!
+    var b = EditSpec()
+    b.apply(.ratio(16.0 / 9), canvas: ratioCanvas)
+    b.apply(.ratio(1), canvas: ratioCanvas)
+    b.apply(.ratio(16.0 / 9), canvas: ratioCanvas)
+    let round = b.crop!
+    return abs(direct.width - round.width) < 1e-9 && abs(direct.height - round.height) < 1e-9
+        && abs(direct.minX - round.minX) < 1e-9 && abs(direct.minY - round.minY) < 1e-9
+}())
+check("来回切五轮也不缩水", {
+    var s = EditSpec()
+    for _ in 0..<5 {
+        s.apply(CropRatio.landscape16x9, canvas: ratioCanvas)
+        s.apply(CropRatio.square, canvas: ratioCanvas)
+    }
+    s.apply(CropRatio.landscape16x9, canvas: ratioCanvas)
+    // 整幅 4000x3000 里最大的 16:9 就是 4000x2250,即归一化宽 1.0
+    return abs(s.crop!.width - 1) < 1e-9
+}())
+check("fitRatio 是画布内最大内接框", {
+    let r = EditGeometry.fitRatio(pixelRatio: 1, canvas: CGSize(width: 2000, height: 1000))
+    // 1:1 在 2000x1000 上顶到高度:1000x1000 → 归一化 0.5 x 1.0
+    return abs(r.width - 0.5) < 1e-9 && abs(r.height - 1) < 1e-9
+}())
+check("fitRatio 保留中心,顶边则贴边", {
+    let cv = CGSize(width: 2000, height: 1000)
+    let mid = EditGeometry.fitRatio(pixelRatio: 1, canvas: cv, center: CGPoint(x: 0.5, y: 0.5))
+    let left = EditGeometry.fitRatio(pixelRatio: 1, canvas: cv, center: CGPoint(x: 0.1, y: 0.5))
+    return abs(mid.midX - 0.5) < 1e-9 && abs(left.minX) < 1e-9 && abs(left.width - 0.5) < 1e-9
+}())
+check("fitRatio 结果的像素比就是要的比例", {
+    let cv = CGSize(width: 4000, height: 3000)
+    return [16.0 / 9, 1, 0.75, 9.0 / 16].allSatisfy { ratio in
+        let r = EditGeometry.fitRatio(pixelRatio: ratio, canvas: cv)
+        let got = (r.width * cv.width) / (r.height * cv.height)
+        return abs(got - ratio) < 1e-9 && r.minX >= -1e-9 && r.minY >= -1e-9
+            && r.maxX <= 1 + 1e-9 && r.maxY <= 1 + 1e-9
+    }
+}())
+
+// MARK: - 广色域(调色不该压色域)
+
+section("广色域(调色不该压色域)")
+
+let p3Space = CGColorSpace(name: CGColorSpace.displayP3)!
+
+func p3Image(_ w: Int, _ h: Int) -> CGImage {
+    let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                        space: p3Space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    // P3 的纯红落在 sRGB 色域之外:一旦被压成 sRGB 再读回 P3,就掉到 (0.92,0.2,0.13)
+    // 一带,这个差值正是这组断言的探针。
+    ctx.setFillColor(CGColor(colorSpace: p3Space, components: [1, 0, 0, 1])!)
+    ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+    return ctx.makeImage()!
+}
+
+/// 在指定色彩空间里读像素。默认那份 pixelIn 读的是 sRGB,读不出色域差别。
+func pixelInSpace(_ img: CGImage, _ x: Int, _ y: Int, _ space: CGColorSpace) -> (r: UInt8, g: UInt8, b: UInt8)? {
+    guard let ctx = CGContext(data: nil, width: img.width, height: img.height,
+                              bitsPerComponent: 8, bytesPerRow: img.width * 4, space: space,
+                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    else { return nil }
+    ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+    guard let data = ctx.data else { return nil }
+    let p = data.advanced(by: (y * img.width + x) * 4).assumingMemoryBound(to: UInt8.self)
+    return (p[0], p[1], p[2])
+}
+
+let p3Red = p3Image(16, 16)
+check("样张确实是 Display P3", p3Red.colorSpace?.name == CGColorSpace.displayP3)
+
+if true {
+    // contrast 1.05 对纯红几乎不动数值(算完仍顶到上限),动的只有"要不要
+    // 重编码"这件事——正好把色域截断单独暴露出来。
+    var a = ColorAdjustments()
+    a.contrast = 1.05
+    if let out = ImageAdjust.apply(a, to: p3Red) {
+        check("调色保留 Display P3 色彩空间", out.colorSpace?.name == CGColorSpace.displayP3)
+        if let p = pixelInSpace(out, 8, 8, p3Space) {
+            // 被压成 sRGB 的话,在 P3 里读回来的红会明显掉档、绿明显抬起来
+            check("调色不把 P3 纯红截成 sRGB 红(\(p.r),\(p.g),\(p.b))", p.r > 245 && p.g < 30)
+        } else {
+            check("调色不把 P3 纯红截成 sRGB 红", false)
+        }
+    } else {
+        check("调色保留 Display P3 色彩空间", false)
+        check("调色不把 P3 纯红截成 sRGB 红", false)
+    }
+}
+
+check("马赛克/水印画布也跟着源色域走", {
+    var s = EditSpec()
+    s.strokes = [MosaicStroke(points: [CGPoint(x: 0.1, y: 0.1)], radius: 0.05)]
+    guard let m = ImageEdit.applyAdjustments(p3Red, spec: s) else { return false }
+    return m.colorSpace?.name == CGColorSpace.displayP3
+}())
+check("标注画布也跟着源色域走",
+      renderAnnotations([.rect(CGRect(x: 0.1, y: 0.1, width: 0.5, height: 0.5))], on: p3Red)
+          .colorSpace?.name == CGColorSpace.displayP3)
+check("自动增强不压色域", SmartEdit.autoEnhance(p3Red)?.colorSpace?.name == CGColorSpace.displayP3)
+
+// 反面:灰度/CMYK 这些当不了 RGBA8 上下文的输出空间,必须退回 sRGB,
+// 否则建不出上下文,整条管线返回 nil(表现为"点了导出什么都没发生")。
+check("灰度源退回 sRGB 而不是整条管线失败", {
+    let gray = CGColorSpace(name: CGColorSpace.genericGrayGamma2_2)!
+    guard let ctx = CGContext(data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 0,
+                              space: gray, bitmapInfo: CGImageAlphaInfo.none.rawValue),
+          let img = ctx.makeImage() else { return false }
+    var a = ColorAdjustments()
+    a.contrast = 1.2
+    return ImageEdit.drawingSpace(img).name == CGColorSpace.sRGB
+        && ImageAdjust.apply(a, to: img) != nil
+}())
+
+// MARK: - 预览分层(base 可缓存)
+
+section("预览分层(base 可缓存)")
+
+if true {
+    var s = EditSpec()
+    s.rotationQuarters = 1
+    s.adjustments.saturation = 1.4
+    s.strokes = [MosaicStroke(points: [CGPoint(x: 0.3, y: 0.3)], radius: 0.06)]
+    s.annotations = [.rect(CGRect(x: 0.1, y: 0.1, width: 0.4, height: 0.4))]
+
+    let whole = ImageEdit.preview(source: editPNG, spec: s, maxPixel: 256)
+    let base = ImageEdit.prepareBase(source: editPNG, spec: s, maxPixel: 256)
+    let layered = base.flatMap { ImageEdit.applyAdjustments($0, spec: s) }
+    check("拆开两步 == 一步到底(逐像素)", {
+        guard let a = whole, let b = layered else { return false }
+        return rgbaBytes(a) == rgbaBytes(b)
+    }())
+    // 纯函数:同一张 base 反复调用互不影响,缓存才敢复用。
+    check("同一 base 复用两次结果一致", {
+        guard let b = base,
+              let x = ImageEdit.applyAdjustments(b, spec: s),
+              let y = ImageEdit.applyAdjustments(b, spec: s) else { return false }
+        return rgbaBytes(x) == rgbaBytes(y)
+    }())
+    check("base 只做变换,不含调色/笔迹/标注", {
+        guard let b = base else { return false }
+        var bare = EditSpec()
+        bare.rotationQuarters = 1
+        return rgbaBytes(b) == rgbaBytes(ImageEdit.prepareBase(source: editPNG, spec: bare, maxPixel: 256)!)
+    }())
+}
+
+// 缓存键:漏比一个字段的表现是"关掉抠图预览没变",极难在界面上复现,
+// 所以每个 prepareBase 会读的输入都要有一条断言盯着。
+if true {
+    var s = EditSpec()
+    let key = ImageEdit.PreviewBaseKey(source: editPNG, spec: s, maxPixel: 800)
+    s.adjustments.brightness = 0.2
+    s.strokes = [MosaicStroke(points: [CGPoint(x: 0.1, y: 0.1)], radius: 0.05)]
+    s.annotations = [.arrow(from: CGPoint(x: 0, y: 0), to: CGPoint(x: 1, y: 1))]
+    s.crop = CGRect(x: 0, y: 0, width: 0.5, height: 0.5)
+    s.watermark = WatermarkSpec(text: "openimg.io")
+    s.exportFormat = .png
+    check("调色/笔迹/标注/裁剪/水印不作废 base",
+          ImageEdit.PreviewBaseKey(source: editPNG, spec: s, maxPixel: 800) == key)
+
+    let mutations: [(inout EditSpec) -> Void] = [
+        { $0.rotationQuarters = 1 },
+        { $0.flipHorizontal = true },
+        { $0.flipVertical = true },
+        { $0.enhance = true },
+        { $0.cutout = true },
+    ]
+    for mutate in mutations {
+        var t = EditSpec()
+        mutate(&t)
+        check("变换/增强/抠图作废 base",
+              ImageEdit.PreviewBaseKey(source: editPNG, spec: t, maxPixel: 800) != key)
+    }
+    check("换源或换预览尺寸作废 base",
+          ImageEdit.PreviewBaseKey(source: editPNG, spec: EditSpec(), maxPixel: 1600) != key
+              && ImageEdit.PreviewBaseKey(source: posPNG, spec: EditSpec(), maxPixel: 800) != key)
+}
+
+// MARK: - 标注接入配方
+
+section("标注接入配方")
+
+let annoPNG = writePNG(solidImage(200, 200), "kitcheck-anno.png")
+defer { try? FileManager.default.removeItem(at: annoPNG) }
+
+// 空转闸门认不出标注 = 只画了标注的那次编辑被 confirmEdit 静默丢弃、上传原图。
+check("只有标注也算编辑", {
+    var s = EditSpec()
+    s.annotations = [.rect(CGRect(x: 0.1, y: 0.1, width: 0.3, height: 0.3))]
+    return s.hasEdits
+}())
+check("空标注数组不算编辑", {
+    var s = EditSpec()
+    s.annotations = []
+    return !s.hasEdits
+}())
+
+if true {
+    var s = EditSpec()
+    s.annotations = [.freehand(points: [CGPoint(x: 0.1, y: 0.5), CGPoint(x: 0.9, y: 0.5)],
+                               lineWidth: 0.02)]
+    if let out = ImageEdit.render(source: annoPNG, spec: s),
+       let mid = pixelAt(out, 100, 100), let corner = pixelAt(out, 5, 5) {
+        defer { try? FileManager.default.removeItem(at: out.deletingLastPathComponent()) }
+        check("只有标注也渲染得出产物,且笔迹落在画面上",
+              mid.r > 150 && mid.g < 90 && corner.r > 245 && corner.g > 245)
+    } else {
+        check("只有标注也渲染得出产物,且笔迹落在画面上", false)
+    }
+}
+
+// 标注压在马赛克之上:标注是"表达",被遮蔽层盖住就白画了。
+if true {
+    var s = EditSpec()
+    s.mosaicStyle = .solid
+    s.strokes = [MosaicStroke(points: [CGPoint(x: 0.5, y: 0.5)], radius: 1.0)]   // 涂满
+    s.annotations = [.freehand(points: [CGPoint(x: 0.1, y: 0.5), CGPoint(x: 0.9, y: 0.5)],
+                               lineWidth: 0.02)]
+    if let out = ImageEdit.render(source: annoPNG, spec: s), let mid = pixelAt(out, 100, 100) {
+        defer { try? FileManager.default.removeItem(at: out.deletingLastPathComponent()) }
+        check("标注盖在马赛克之上", mid.r > 150 && mid.g < 90)
+    } else {
+        check("标注盖在马赛克之上", false)
+    }
+}
+
+// 标注和笔迹同坐标系(整幅变换后画面),所以裁剪之前落笔:裁掉的部分连同
+// 标注一起没了,正是用户在画布上看到的。
+if true {
+    var s = EditSpec()
+    s.annotations = [.freehand(points: [CGPoint(x: 0.05, y: 0.5), CGPoint(x: 0.45, y: 0.5)],
+                               lineWidth: 0.02)]
+    s.crop = CGRect(x: 0.5, y: 0, width: 0.5, height: 1)   // 只留右半,标注全在左半
+    if let out = ImageEdit.render(source: annoPNG, spec: s) {
+        defer { try? FileManager.default.removeItem(at: out.deletingLastPathComponent()) }
+        var clean = true
+        for x in stride(from: 0, to: 100, by: 5) {
+            if let p = pixelAt(out, x, 100), !(p.r > 245 && p.g > 245) { clean = false }
+        }
+        check("裁掉的那半不含标注", clean)
+    } else {
+        check("裁掉的那半不含标注", false)
+    }
+}
+
+// 变换搬运:圈住左边那个人的圈,翻完还得圈着他。
+check("配方水平翻转:标注跟翻", {
+    var s = EditSpec()
+    s.annotations = [.rect(CGRect(x: 0.1, y: 0.2, width: 0.3, height: 0.4))]
+    let f = EditGeometry.flipSpecH(s)
+    guard case .rect(let r) = f.annotations[0].kind else { return false }
+    return f.flipHorizontal && abs(r.minX - 0.6) < 1e-9 && abs(r.minY - 0.2) < 1e-9
+        && abs(r.width - 0.3) < 1e-9 && abs(r.height - 0.4) < 1e-9
+}())
+check("配方垂直翻转:标注跟翻", {
+    var s = EditSpec()
+    s.annotations = [.arrow(from: CGPoint(x: 0.2, y: 0.1), to: CGPoint(x: 0.8, y: 0.9))]
+    let f = EditGeometry.flipSpecV(s)
+    guard case .arrow(let a, let b) = f.annotations[0].kind else { return false }
+    return f.flipVertical && abs(a.y - 0.9) < 1e-9 && abs(b.y - 0.1) < 1e-9
+        && abs(a.x - 0.2) < 1e-9 && abs(b.x - 0.8) < 1e-9
+}())
+check("翻转两次标注回原位(H 与 V)", {
+    var s = EditSpec()
+    s.annotations = [
+        .rect(CGRect(x: 0.1, y: 0.2, width: 0.3, height: 0.4)),
+        .text("说明", at: CGPoint(x: 0.3, y: 0.7), fontScale: 0.04),
+        .freehand(points: [CGPoint(x: 0.25, y: 0.6)], lineWidth: 0.005),
+    ]
+    let h = EditGeometry.flipSpecH(EditGeometry.flipSpecH(s))
+    let v = EditGeometry.flipSpecV(EditGeometry.flipSpecV(s))
+    func same(_ x: [Annotation], _ y: [Annotation]) -> Bool {
+        zip(x, y).allSatisfy {
+            near($0.normalizedBounds.minX, $1.normalizedBounds.minX, 1e-12)
+                && near($0.normalizedBounds.minY, $1.normalizedBounds.minY, 1e-12)
+                && near($0.normalizedBounds.width, $1.normalizedBounds.width, 1e-12)
+                && near($0.lineWidth, $1.lineWidth)
+        }
+    }
+    return same(s.annotations, h.annotations) && same(s.annotations, v.annotations)
+}())
+check("配方转四次 90° 标注回原位", {
+    var s = EditSpec()
+    s.annotations = [.ellipse(CGRect(x: 0.1, y: 0.2, width: 0.3, height: 0.4))]
+    var r = s
+    for _ in 0..<4 { r = EditGeometry.rotateSpecCW(r) }
+    guard case .ellipse(let e) = r.annotations[0].kind else { return false }
+    return abs(e.minX - 0.1) < 1e-9 && abs(e.minY - 0.2) < 1e-9
+        && abs(e.width - 0.3) < 1e-9 && abs(e.height - 0.4) < 1e-9
+}())
+// 翻转不变式:标注与笔迹归一化到同一套坐标,翻一次的位移必须一模一样,
+// 否则"翻转后马赛克对了、圈没对"这种错位只有肉眼能发现。
+check("翻转不变式:标注与笔迹位移一致", {
+    var s = EditSpec()
+    let p = CGPoint(x: 0.23, y: 0.71)
+    s.strokes = [MosaicStroke(points: [p], radius: 0.02)]
+    s.annotations = [.freehand(points: [p], lineWidth: 0.005)]
+    let f = EditGeometry.flipSpecV(EditGeometry.flipSpecH(s))
+    guard case .freehand(let pts) = f.annotations[0].kind, let a = pts.first else { return false }
+    let m = f.strokes[0].points[0]
+    return near(a.x, m.x, 1e-12) && near(a.y, m.y, 1e-12)
+}())
+
+// MARK: - 图片水印
+
+section("图片水印")
+
+/// 测试用的 logo。alpha 版只涂左半边,右半留空——正是一枚"抠过背景"的 logo
+/// 该有的样子,而这恰好让"贴上去之后右半边应该还是底图"变成一条可断言的事实。
+func makeLogo(alpha: Bool) -> CGImage {
+    let ctx = CGContext(data: nil, width: 16, height: 16, bitsPerComponent: 8, bytesPerRow: 0,
+                        space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    ctx.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: alpha ? 8 : 16, height: 16))
+    return ctx.makeImage()!
+}
+
+let logoOpaque = makeLogo(alpha: false)
+let logoAlpha = makeLogo(alpha: true)
+let logoOpaquePNG = WatermarkStore.pngData(logoOpaque)!
+let logoAlphaPNG = WatermarkStore.pngData(logoAlpha)!
+
+// 两种模式的 scale 量纲根本不同:文字模式是**字号** ÷ 画面宽度,图片模式是
+// **logo 整幅宽度** ÷ 画面宽度。共用一个数的表现是切一次模式水印就没了。
+check("图片模式的默认比例远大于文字模式",
+      WatermarkKind.image.defaultScale > WatermarkKind.text.defaultScale * 3)
+check("两种模式的默认值各是各的",
+      WatermarkKind.text.defaultScale == 0.03 && WatermarkKind.image.defaultScale == 0.12)
+check("默认值都落在各自的区间里",
+      WatermarkKind.allCases.allSatisfy { $0.scaleRange.contains($0.defaultScale) })
+// 这一条钉的正是"图片模式沿用了文字模式那个 0.03"这个 bug:它的表现是水印
+// 小到看不见,而界面上一切正常。
+check("文字模式的默认比例进不了图片模式的区间",
+      !WatermarkKind.image.scaleRange.contains(WatermarkKind.text.defaultScale))
+check("clampScale 夹进区间", {
+    let k = WatermarkKind.image
+    return k.clampScale(0) == k.scaleRange.lowerBound
+        && k.clampScale(9) == k.scaleRange.upperBound
+        && k.clampScale(0.2) == 0.2
+}())
+
+// isRenderable 是渲染、hasEdits、界面开关三处共用的那一个判断。
+check("空文字不算配好了水印", !WatermarkSpec(text: "   ").isRenderable)
+check("空字节不算配好了水印", !WatermarkSpec(imagePNG: Data()).isRenderable)
+check("有字节就算配好了", WatermarkSpec(imagePNG: logoOpaquePNG).isRenderable)
+check("图片水印计入 hasEdits", {
+    var s = EditSpec()
+    s.watermark = WatermarkSpec(imagePNG: logoOpaquePNG)
+    return s.hasEdits
+}())
+// 从前 hasEdits 只看 watermark != nil:一份空水印会让空转闸门放行,渲染那边
+// 又什么都不画,结果是"编辑过"的图与原图逐字节相同,白重编一次。
+check("空水印不计入 hasEdits", {
+    var s = EditSpec()
+    s.watermark = WatermarkSpec(text: "")
+    return !s.hasEdits
+}())
+
+// 尺寸几何:渲染、编辑器叠加层、设置页预览三处共用,所以只需要盯住这一个函数。
+check("图片水印尺寸:按画面宽度定宽,保住长宽比", {
+    let s = EditGeometry.watermarkImageSize(logo: CGSize(width: 200, height: 50),
+                                            canvasWidth: 1000, scale: 0.12)
+    return s.width == 120 && s.height == 30
+}())
+check("图片水印尺寸夹进区间(0.03 按下限算)", {
+    let s = EditGeometry.watermarkImageSize(logo: CGSize(width: 100, height: 100),
+                                            canvasWidth: 1000, scale: 0.03)
+    return s.width == 40 && s.height == 40
+}())
+check("零尺寸 logo 不除零",
+      EditGeometry.watermarkImageSize(logo: .zero, canvasWidth: 1000, scale: 0.12) == .zero)
+// 按短边算:按 logo 算的话,logo 越大边距越大,一路把它推离用户选的那个角。
+check("图片水印留白按画面短边算",
+      EditGeometry.watermarkImageMargin(canvas: CGSize(width: 4000, height: 1000)) == 30)
+
+// hasTransparency 回答的是"贴上去会不会是个不透明方块"。只看 alphaInfo 答不了
+// ——归一化成 PNG 之后**每一张**都有 alpha 通道,包括那张从 JPEG 转过来的。
+check("解不出的字节返回 nil", ImageEdit.decode(Data([1, 2, 3])) == nil)
+check("PNG 字节解得回来", ImageEdit.decode(logoOpaquePNG)?.width == 16)
+check("整幅不透明:hasTransparency 为假", !ImageEdit.hasTransparency(logoOpaque))
+check("挖空一半:hasTransparency 为真", ImageEdit.hasTransparency(logoAlpha))
+check("编成 PNG 再读回来,透明通道还在",
+      ImageEdit.decode(logoAlphaPNG).map { ImageEdit.hasTransparency($0) } == true)
+
+// WatermarkStore 的纯计算部分。
+check("超过 maxSide 的图被缩到 maxSide", {
+    let big = solidImage(WatermarkStore.maxSide * 3, WatermarkStore.maxSide)
+    let out = WatermarkStore.downscaled(big)
+    return out.width == WatermarkStore.maxSide
+}())
+check("已经够小的图原样返回,不白缩一次",
+      WatermarkStore.downscaled(logoOpaque).width == 16)
+check("超过字节上限的输入直接拒", {
+    let huge = Data(count: WatermarkStore.maxInputBytes + 1)
+    do { _ = try WatermarkStore.store(huge); return false }
+    catch { return error as? WatermarkStore.Failure == .tooLarge }
+}())
+check("不是图片的字节报 notAnImage", {
+    do { _ = try WatermarkStore.store(Data("not an image".utf8)); return false }
+    catch { return error as? WatermarkStore.Failure == .notAnImage }
+}())
+
+// 磁盘往返。这个自检跑在开发者自己的机器上,而水印图是一份真实的用户数据
+// ——先收起来,跑完原样放回去。
+if true {
+    let mine = WatermarkStore.load()
+    defer {
+        if let mine { _ = try? WatermarkStore.store(mine) } else { WatermarkStore.clear() }
+    }
+    do {
+        let stored = try WatermarkStore.store(logoAlphaPNG)
+        check("存下来的就是读回来的", WatermarkStore.load() == stored)
+        check("存进去的是 PNG 且 alpha 还在",
+              ImageEdit.decode(stored).map { ImageEdit.hasTransparency($0) } == true)
+        WatermarkStore.clear()
+        check("清掉之后读回 nil", WatermarkStore.load() == nil)
+        // 文件不在时再清一次不该炸——"现在没有水印图"正是调用方要的结果。
+        WatermarkStore.clear()
+        check("重复清除是空操作", WatermarkStore.load() == nil)
+    } catch {
+        check("水印图磁盘往返", false)
+    }
+}
+
+// 渲染冒烟:尺寸对不等于位置对,而"贴哪儿"正是水印唯一要做对的事。
+// 32x16 的蓝底,右下角贴一枚 8x8 的 logo(比例 0.04 是图片模式的下限,
+// 32 × 0.04 = 1.28 会被 8px 的下限顶上去)。
+if true {
+    var s = EditSpec()
+    s.watermark = WatermarkSpec(imagePNG: logoOpaquePNG, anchor: 8, opacity: 1, scale: 0.04)
+    if let out = ImageEdit.render(source: editPNG, spec: s) {
+        let inside = pixelAt(out, 27, 12)
+        let outside = pixelAt(out, 4, 4)
+        check("图片水印落在右下角", inside.map { isInk($0) } == true)
+        check("图片水印之外的画面没被动过", outside.map { $0.b > 180 && $0.r < 90 } == true)
+        try? FileManager.default.removeItem(at: out.deletingLastPathComponent())
+    } else {
+        check("图片水印渲染成功", false)
+    }
+}
+
+// alpha 必须原样穿过整条管线:透明的那半边贴上去应当什么都不改变。这是
+// 「去背景」那个按钮存在的全部意义,合成时把它乘没了等于那个按钮白点。
+if true {
+    var s = EditSpec()
+    s.watermark = WatermarkSpec(imagePNG: logoAlphaPNG, anchor: 8, opacity: 1, scale: 0.04)
+    if let out = ImageEdit.render(source: editPNG, spec: s) {
+        check("logo 不透明的那半边盖住了底图", pixelAt(out, 25, 12).map { isInk($0) } == true)
+        check("logo 透明的那半边露出底图",
+              pixelAt(out, 30, 12).map { $0.b > 180 && $0.r < 90 } == true)
+        try? FileManager.default.removeItem(at: out.deletingLastPathComponent())
+    } else {
+        check("带 alpha 的图片水印渲染成功", false)
+    }
+}
+
+// MARK: - 导出格式清单(界面拿得到的选项)
+
+section("导出格式清单")
+
+check("清单首项是 auto", ExportFormat.selectable(writable: allWritable).first == .auto)
+check("清单只放本机写得出的格式",
+      ExportFormat.selectable(writable: noWebP) == [.auto, .jpeg, .png, .heic])
+check("清单里非 auto 的每一项都可写",
+      ExportFormat.selectable(writable: noWebP).allSatisfy { $0 == .auto || noWebP.contains($0) })
+// allCases 是"这个枚举认识的格式",不是"这台机器产得出的格式"。界面照 allCases
+// 摆,用户点下的 .webp 会被 resolve 悄悄换掉——他以为导出了 WebP,拿到 JPEG。
+check("清单不等于 allCases(本机写不出 WebP)",
+      ExportFormat.selectable() != ExportFormat.allCases
+          && !ExportFormat.selectable().contains(.webp))
+check("本机清单至少含 auto/jpeg/png",
+      Set(ExportFormat.selectable()).isSuperset(of: [.auto, .jpeg, .png]))
+// auto 的语义是"别改我的图",退路必须无损、保 alpha;而显式选了有损格式的人
+// 要的就是有损小体积,给他 JPEG。
+check("显式选 WebP 写不了才退 JPEG(用户要的就是有损)",
+      ExportFormat.resolve(requested: .webp, sourceType: .png, requiresAlpha: false,
+                           writable: noWebP) == .jpeg)
 
 // MARK: - Result
 

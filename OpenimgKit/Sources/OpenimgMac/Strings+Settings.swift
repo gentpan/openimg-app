@@ -83,6 +83,11 @@ struct SettingsStrings: Sendable {
     let unlimited: String
     let formats: String
     let imageCount: @Sendable (Int) -> String
+    /// 上传前抹除元数据。与同卡片的另外三项不同源(那三项是账号偏好,这一项
+    /// 只在这台 Mac 上生效),但用户找"我传上去的照片带不带定位"只会往这张卡
+    /// 上找,所以放一起。
+    let stripMetadata: String
+    let stripMetadataHint: String
 
     // 自动上传目录
     let watchFolders: String
@@ -97,7 +102,35 @@ struct SettingsStrings: Sendable {
 
     // 水印
     let watermark: String
+    /// 文字 / 图片两种模式的分段控件标题与两个选项。
+    let wmMode: String
+    let wmModeText: String
+    let wmModeImage: String
     let watermarkTextField: String
+    // 图片模式
+    let wmChooseImage: String
+    let wmReplaceImage: String
+    let wmClearImage: String
+    let wmNoImage: String
+    /// 图片模式的大小滑块。文字模式那三档("小/中/大")在这里不适用:logo 的
+    /// 合适尺寸随 logo 本身的形状变,得给个连续的数。
+    let wmImageSize: @Sendable (Int) -> String
+    let wmOpaqueNote: String
+    let wmCutout: String
+    let wmCutoutNoSubject: String
+    let wmImageNote: String
+    // AI 生成水印
+    let wmGenTitle: String
+    let wmGenPrompt: String
+    let wmGenButton: String
+    let wmGenSubmitted: String
+    let wmGenPending: String
+    let wmGenDone: String
+    let wmGenFailed: @Sendable (String) -> String
+    let wmGenNote: String
+    let wmErrTooLarge: @Sendable (Int) -> String
+    let wmErrNotAnImage: String
+    let wmErrSaveFailed: String
     let position: String
     let positionLabel: @Sendable (String) -> String
     let opacity: @Sendable (Int) -> String
@@ -239,6 +272,8 @@ extension SettingsStrings {
         unlimited: "不限",
         formats: "支持格式",
         imageCount: { n in "\(n) 张" },
+        stripMetadata: "抹除定位与设备信息",
+        stripMetadataHint: "上传前在这台 Mac 上删掉 GPS、机身序列号与厂商私有数据，光圈快门 ISO 保留。关掉就按原样上传——图床的链接是公开的，图里的拍摄地点会跟着一起公开。抹不掉的图（如动图）不会上传。",
 
         watchFolders: "自动上传目录",
         watchToggle: "监控以下目录，图片自动上传",
@@ -251,7 +286,30 @@ extension SettingsStrings {
         watchNote: "首次启用会上传目录内的全部现有图片（含子目录）。已上传的文件记录在本地清单，改名、移动或重启不会重复占用配额。配额不足、到每日上限或令牌失效会自动暂停（每日上限次日自动继续）。只上传，不会删除任何一端的文件。",
 
         watermark: "水印",
+        wmMode: "类型",
+        wmModeText: "文字",
+        wmModeImage: "图片",
         watermarkTextField: "水印文字（留空即不启用）",
+        wmChooseImage: "选择图片…",
+        wmReplaceImage: "换一张…",
+        wmClearImage: "移除",
+        wmNoImage: "还没有水印图",
+        wmImageSize: { pct in "大小 \(pct)%" },
+        wmOpaqueNote: "这张图没有透明背景，贴上去是一个不透明的方块。",
+        wmCutout: "去背景",
+        wmCutoutNoSubject: "认不出画面里的主体，这张图不适合自动去背景。换一张，或者用带透明背景的 PNG。",
+        wmImageNote: "水印图存在本机（应用支持目录），不上传、不同步；最长边超过 1024 像素会缩到 1024，并统一转成 PNG 以保住透明通道。图片模式的大小是 logo 宽度占画面宽度的比例，与文字模式的字号比例各存各的。",
+        wmGenTitle: "用 AI 生成一枚",
+        wmGenPrompt: "描述你想要的水印，例如：极简线条风格的山峰图标",
+        wmGenButton: "生成",
+        wmGenSubmitted: "已提交，通常几十秒出图",
+        wmGenPending: "正在生成…",
+        wmGenDone: "水印图已更新",
+        wmGenFailed: { reason in "生成水印失败：\(reason)" },
+        wmGenNote: "透明背景需要专门的模型，所以这一条固定用 gpt-image-1，比例锁 1:1、画质锁 1k——水印最终只按画面宽度的十几个百分点渲染，出 4k 只是白花最贵的一档。与其它 AI 产出一样计入额度、一样进图库，同时把本机这份设成当前水印。",
+        wmErrTooLarge: { mb in "图片太大了，请选 \(mb) MB 以内的文件" },
+        wmErrNotAnImage: "这个文件不是一张能读的图片",
+        wmErrSaveFailed: "水印图没能存下来",
         position: "位置",
         positionLabel: { name in "水印位置：\(name)" },
         opacity: { pct in "透明度 \(pct)%" },
@@ -398,6 +456,8 @@ extension SettingsStrings {
         unlimited: "Unlimited",
         formats: "Formats",
         imageCount: { n in n == 1 ? "1 image" : "\(n) images" },
+        stripMetadata: "Remove location and device info",
+        stripMetadataHint: "GPS, serial numbers and maker-private data are removed on this Mac before uploading; aperture, shutter and ISO are kept. Turn it off to upload untouched — image links are public, and so is anything the photo says about where it was taken. Images that can't be cleaned (animations, for one) aren't uploaded.",
 
         watchFolders: "Auto-Upload Folders",
         watchToggle: "Upload images from these folders automatically",
@@ -410,7 +470,30 @@ extension SettingsStrings {
         watchNote: "Turning this on uploads every image already in the folders, subfolders included. Uploaded files are recorded in a local list, so renaming, moving or restarting never spends quota twice. Running out of quota, reaching the daily limit or an expired token pauses it automatically — the daily limit resumes by itself the next day. It only uploads; nothing is ever deleted on either end.",
 
         watermark: "Watermark",
+        wmMode: "Type",
+        wmModeText: "Text",
+        wmModeImage: "Image",
         watermarkTextField: "Watermark text (leave empty to turn it off)",
+        wmChooseImage: "Choose Image…",
+        wmReplaceImage: "Replace…",
+        wmClearImage: "Remove",
+        wmNoImage: "No watermark image yet",
+        wmImageSize: { pct in "Size \(pct)%" },
+        wmOpaqueNote: "This image has no transparent background — it will land as an opaque rectangle.",
+        wmCutout: "Remove Background",
+        wmCutoutNoSubject: "No recognisable subject in this image, so it can't be cut out automatically. Try another one, or a PNG that already has a transparent background.",
+        wmImageNote: "The watermark image stays on this Mac (in Application Support) — never uploaded, never synced. Anything longer than 1024px on its longest side is scaled down to 1024 and re-encoded as PNG so the alpha channel survives. In image mode the size is the logo's width as a share of the picture's width; text mode keeps its own, separate font-size share.",
+        wmGenTitle: "Generate one with AI",
+        wmGenPrompt: "Describe the watermark you want, e.g. a minimal line-art mountain icon",
+        wmGenButton: "Generate",
+        wmGenSubmitted: "Submitted — this usually takes under a minute",
+        wmGenPending: "Generating…",
+        wmGenDone: "Watermark image updated",
+        wmGenFailed: { reason in "Could not generate the watermark: \(reason)" },
+        wmGenNote: "A transparent background needs a specific model, so this one always runs on gpt-image-1, locked to 1:1 and the 1k tier — the watermark is only ever rendered at a low double-digit percentage of the picture's width, so 4K would just spend the priciest tier for pixels nobody sees. It counts against your allowance and lands in your library like any other AI image; the local copy is set as the current watermark at the same time.",
+        wmErrTooLarge: { mb in "That image is too large — pick a file under \(mb) MB" },
+        wmErrNotAnImage: "That file isn't an image this Mac can read",
+        wmErrSaveFailed: "Could not save the watermark image",
         position: "Position",
         positionLabel: { name in "Watermark position: \(name)" },
         opacity: { pct in "Opacity \(pct)%" },

@@ -264,26 +264,47 @@ public enum AnnotationGeometry {
 
     /// 整组标注随画面顺时针转 90°。复用 EditGeometry 的点/矩形变换,和
     /// EditSpec.rotateSpecCW 是同一套规则;线宽与字号归一化到对角线,旋转
-    /// 不改变对角线,所以原样带过去。
-    ///
-    /// 文字锚点是块的左上角,转过去之后仍当左上角用——严格说转 90° 后原来的
-    /// 左上角变成了别的角,但文字块尺寸依赖排版宽度,追求"绝对不动"要先排版
-    /// 再旋转,得让纯几何依赖 CoreText。宁可差半个块。
+    /// 不改变对角线,所以原样带过去(翻转同理)。
     public static func rotateQuarterCW(_ items: [Annotation]) -> [Annotation] {
+        map(items, point: EditGeometry.rotateQuarterCW, rect: EditGeometry.rotateQuarterCW)
+    }
+
+    /// 整组标注随画面水平/垂直翻转。和旋转同一条纪律:标注跟着它标的东西走,
+    /// 圈住左边那个人的圈,翻完还得圈着他。
+    ///
+    /// 矩形不能只翻原点:x → 1-x 会把左上角送到右上角**之外**,框整体越界半个
+    /// 身位。所以走 EditGeometry.flipH(CGRect) 那份(它翻的是 maxX),两边共用
+    /// 同一份实现,免得哪天只改对一处。
+    public static func flipH(_ items: [Annotation]) -> [Annotation] {
+        map(items, point: EditGeometry.flipH, rect: EditGeometry.flipH)
+    }
+
+    public static func flipV(_ items: [Annotation]) -> [Annotation] {
+        map(items, point: EditGeometry.flipV, rect: EditGeometry.flipV)
+    }
+
+    /// 三种变换只在"点怎么变、矩形怎么变"上不同,其余(哪些 case 带点、
+    /// 线宽字号原样带过)完全一样。抽出来,免得新增一种变换时漏掉某个 case。
+    ///
+    /// 文字锚点是块的左上角,变换后仍当左上角用——严格说翻转/旋转后原来的
+    /// 左上角变成了别的角,但文字块尺寸依赖排版宽度,追求"绝对不动"要先排版
+    /// 再变换,得让纯几何依赖 CoreText。宁可差半个块。
+    private static func map(_ items: [Annotation],
+                            point: (CGPoint) -> CGPoint,
+                            rect: (CGRect) -> CGRect) -> [Annotation] {
         items.map { item in
             var out = item
             switch item.kind {
             case .freehand(let pts):
-                out.kind = .freehand(points: pts.map(EditGeometry.rotateQuarterCW))
+                out.kind = .freehand(points: pts.map(point))
             case .arrow(let a, let b):
-                out.kind = .arrow(from: EditGeometry.rotateQuarterCW(a),
-                                  to: EditGeometry.rotateQuarterCW(b))
+                out.kind = .arrow(from: point(a), to: point(b))
             case .rect(let r):
-                out.kind = .rect(EditGeometry.rotateQuarterCW(r.standardized))
+                out.kind = .rect(rect(r.standardized))
             case .ellipse(let r):
-                out.kind = .ellipse(EditGeometry.rotateQuarterCW(r.standardized))
+                out.kind = .ellipse(rect(r.standardized))
             case .text(let s, let p, let f):
-                out.kind = .text(s, at: EditGeometry.rotateQuarterCW(p), fontScale: f)
+                out.kind = .text(s, at: point(p), fontScale: f)
             }
             return out
         }
@@ -304,9 +325,11 @@ public func renderAnnotations(_ items: [Annotation], on image: CGImage) -> CGIma
     guard !items.isEmpty else { return image }
     let w = image.width, h = image.height
     let canvas = CGSize(width: w, height: h)
+    // 画布色彩空间跟着源图走:钉死 sRGB 会让"画了个圈"顺带把广色域源压掉
+    // 一档,而标注本该只是叠一层墨。见 ImageEdit.drawingSpace。
     guard w > 0, h > 0,
           let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
-                              space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                              space: ImageEdit.drawingSpace(image),
                               bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
     else { return image }
 

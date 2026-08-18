@@ -35,7 +35,8 @@ struct EditorStrings: Sendable {
     let undoStroke: String
     let rotate: String
     let watermark: String
-    let watermarkNeedsText: String
+    /// 没配水印时那个开关的提示。措辞不提"文字"——现在水印也可以是一枚图。
+    let watermarkNeedsSetup: String
     let watermarkHelp: String
 
     // 放弃编辑确认
@@ -83,7 +84,7 @@ extension EditorStrings {
         undoStroke: "撤销一笔",
         rotate: "旋转",
         watermark: "水印",
-        watermarkNeedsText: "先在 设置 → 水印 里填好水印文字",
+        watermarkNeedsSetup: "先在 设置 → 水印 里配好水印（文字或图片）",
         watermarkHelp: "按设置里的样式加水印",
 
         discardTitle: "放弃当前编辑？",
@@ -129,7 +130,7 @@ extension EditorStrings {
         undoStroke: "Undo Stroke",
         rotate: "Rotate",
         watermark: "Watermark",
-        watermarkNeedsText: "Set the watermark text in Settings → Watermark first",
+        watermarkNeedsSetup: "Set up a watermark — text or image — in Settings → Watermark first",
         watermarkHelp: "Applies the watermark style from Settings",
 
         discardTitle: "Discard your edits?",

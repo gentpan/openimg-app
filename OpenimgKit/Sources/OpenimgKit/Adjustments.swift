@@ -219,6 +219,18 @@ public enum ExportFormat: String, Sendable, CaseIterable, Identifiable {
         })
     }()
 
+    /// 界面该摆出来的格式清单:auto 加上本机**真写得出来**的那些。
+    ///
+    /// 不要拿 allCases 去填选择器。allCases 是这个枚举认识的全部格式,不是这台
+    /// 机器能产出的全部格式——本机 ImageIO 至今写不出 WebP,把 .webp 摆上去
+    /// 就是让用户点一个必定被 resolve 悄悄换掉的选项:他以为自己导出了 WebP,
+    /// 拿到的是 JPEG/PNG。宁可不给这个选项,也不给一个说话不算数的选项。
+    ///
+    /// auto 永远在首位:它是默认值,也是唯一"不改格式"的选择。
+    public static func selectable(writable: Set<ExportFormat> = ExportFormat.writable) -> [ExportFormat] {
+        [.auto] + allCases.filter { $0 != .auto && writable.contains($0) }
+    }
+
     /// 把用户的选择落到一个真能写出去的格式。
     ///
     /// 冲突时的优先级——**alpha > 可写性 > 用户选择 > 源格式**:
@@ -237,7 +249,8 @@ public enum ExportFormat: String, Sendable, CaseIterable, Identifiable {
                                writable: Set<ExportFormat> = ExportFormat.writable) -> ExportFormat {
         // 1) auto → 跟着源格式
         var f = requested
-        if f == .auto {
+        let fromSource = requested == .auto
+        if fromSource {
             if let t = sourceType {
                 if t.conforms(to: .jpeg) { f = .jpeg }
                 else if t.conforms(to: .heic) || t.conforms(to: .heif) { f = .heic }
@@ -247,9 +260,17 @@ public enum ExportFormat: String, Sendable, CaseIterable, Identifiable {
                 f = .png
             }
         }
-        // 2) 写不了就换:有损的换 JPEG(体积量级相当),无损的换 PNG
+        // 2) 写不了就换。换成什么取决于**这个格式是谁挑的**:
+        //  - 用户显式选了有损格式(WebP/HEIC)→ 换 JPEG:他要的就是有损小体积,
+        //    体积量级相当,换过去仍是他要的东西。
+        //  - auto 推出来的 → 换 PNG。auto 的语义是"别改我的图":用户根本没表态
+        //    要有损。WebP 源退到 JPEG 会一次吞两样东西——alpha(WebP 常带透明,
+        //    落到 JPEG 是黑底)和一代画质(源已经是有损,再编一次是二次损失),
+        //    而这一切是静默发生的。PNG 无损、保 alpha,换格式这件事本身不可避免
+        //    (本机就是写不出 WebP),但至少不该顺手弄丢内容。体积变大是明面上
+        //    的代价,用户想要小体积可以显式去选 JPEG。
         if !writable.contains(f) {
-            f = f.isLossy ? .jpeg : .png
+            f = fromSource ? .png : (f.isLossy ? .jpeg : .png)
             if !writable.contains(f) { f = .png }
         }
         // 3) 需要 alpha 而这个格式存不了 → PNG,不再商量
@@ -321,9 +342,14 @@ public enum ImageAdjust: Sendable {
             ci = out.cropped(to: extent)
         }
 
-        // 输出保持 RGBA8 + sRGB:与 ImageEdit.context() 同一套,免得调色前后
-        // 在管线中途换了色彩空间,后续 CGContext 绘制时被隐式转换一遍。
+        // 输出色彩空间**跟着入参**,与 ImageEdit.context(like:) 同一套口径。
+        //
+        // 曾经这里钉死 sRGB,后果是:同一张 Display P3 的图,纯裁剪(走
+        // CGImage.cropping)保留广色域,而只要动一点亮度就被截回 sRGB——
+        // 晚霞、荧光色的衣服、截图里的品牌色肉眼可见地掉一档,且"调不调色
+        // 决定色域"这件事没法向用户解释。CIContext 的工作空间是扩展线性
+        // sRGB,覆盖得住 P3,截断只发生在这最后一步写出的时候。
         return ciContext.createCGImage(ci, from: extent, format: .RGBA8,
-                                       colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+                                       colorSpace: ImageEdit.drawingSpace(image))
     }
 }

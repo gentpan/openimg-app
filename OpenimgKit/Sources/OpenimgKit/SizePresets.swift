@@ -212,12 +212,19 @@ public extension EditSpec {
     /// 比例只重塑裁剪框;像素尺寸额外锁死导出宽度——裁剪框已按同一比例,
     /// 限宽之后高度自然落在目标值上(取整误差 ±1 像素)。这也是 ratio 与
     /// exact 唯一的实现差别。
+    ///
+    /// 新框从**整幅画布**里按比例取最大内接框(保留原框中心),而不是拿当前
+    /// crop 做增量重塑:后者只削不放,于是"16:9 → 1:1 → 16:9"回不到原样,
+    /// 同一个比例连点两次框还会继续缩水,用户只能靠「清除裁剪」才救得回来。
+    /// 换比例是换一个构图,不是在旧框上再削一刀。
     mutating func apply(_ intent: SizeIntent, canvas: CGSize) {
-        let base = crop ?? CGRect(x: 0, y: 0, width: 1, height: 1)
-        crop = EditGeometry.applyRatio(base, pixelRatio: intent.pixelRatio, canvas: canvas)
-        // ratio 分支刻意不碰 exportMaxWidth:用户可能已经自己设了限宽,选个
-        // 构图比例不该把它清掉。
-        if let w = intent.exportWidth { exportMaxWidth = w }
+        let center = crop.map { CGPoint(x: $0.midX, y: $0.midY) } ?? CGPoint(x: 0.5, y: 0.5)
+        crop = EditGeometry.clampCrop(
+            EditGeometry.fitRatio(pixelRatio: intent.pixelRatio, canvas: canvas, center: center))
+        // ratio 分支刻意不碰限宽:用户可能已经自己设了限宽,选个构图比例不该
+        // 把它清掉。exact 分支写的是 .preset ——不是 exportMaxWidth 那个 setter
+        // (它意味着"用户手填"),否则导出倍率会乘穿这个锁死的平台规格。
+        if let w = intent.exportWidth { widthLimit = .preset(w) }
     }
 
     /// 套用裁剪比例;free 表示解除约束,裁剪框保持原样。

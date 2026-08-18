@@ -59,11 +59,17 @@ struct AIQuotaInline: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        if let s = model.aiStatus, s.remaining > 0 {
+        if let s = model.aiStatus, s.remaining > 0 || s.picbiRemaining > 0 {
             HStack(spacing: 10) {
                 Text(L.s.generate.times(s.remaining))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.brandDisplay)
+                    .foregroundStyle(s.remaining > 0 ? AnyShapeStyle(Color.brandDisplay)
+                                                     : AnyShapeStyle(.secondary))
+                // 本站额度见底之后花的是 pic.bi 的钱,得让人看见还剩多少
+                // ——不然界面上只剩一个「0 次」,而按钮却是亮的。
+                if s.picbiRemaining > 0 {
+                    pair(L.s.generate.picbiLabel, "\(s.picbiRemaining)")
+                }
                 pair(L.s.generate.todayLabel, L.s.generate.todayValue(s.usedToday, s.dailyLimit))
                 pair(L.s.generate.monthlyLabel, L.s.generate.monthlyValue(s.credits, s.monthly))
             }
@@ -89,7 +95,9 @@ struct AIQuotaNotice: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        if let s = model.aiStatus, s.remaining <= 0 {
+        // pic.bi 还有余额时不算用完——那时按钮是亮的,再挂一条「去签到」就是
+        // 一句明确说错的话。
+        if let s = model.aiStatus, s.remaining <= 0, s.picbiRemaining <= 0 {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.circle")
                     .font(.caption).foregroundStyle(.orange)

@@ -357,6 +357,20 @@ struct SettingsView: View {
                         .disabled(model.uploadMode == .original)
                         .opacity(model.uploadMode == .original ? 0.45 : 1)
                 }
+                // 上面三项写账号偏好,这一项只写本机——剥离在这台 Mac 上发生,
+                // 服务器执行不了。原图模式下照样生效:那个模式承诺的是不重新
+                // 编码,不是"连定位一起原样发到公网上"。
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle(isOn: $model.stripMetadata) {
+                        Text(L.s.settings.stripMetadata).font(.callout)
+                    }
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    Text(L.s.settings.stripMetadataHint)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if let t = model.quota?.tier {
                     // The limits these three controls operate inside. They were
                     // a card of their own, which meant a read-only card sitting
@@ -537,11 +551,29 @@ struct SettingsView: View {
     private var watermarkCard: some View {
         SettingsCard(L.s.settings.watermark, "signature") {
             VStack(alignment: .leading, spacing: 12) {
-                Field(icon: "signature") {
-                    TextField(L.s.settings.watermarkTextField, text: Binding(
-                        get: { model.wmText },
-                        set: { model.wmText = $0; model.saveWatermarkPrefs() }
-                    ))
+                // 模式在最前面:后面每一栏的含义都随它变(输入框还是图片、
+                // 字号还是 logo 宽度),放在下面会让人先填完再发现填错了地方。
+                Picker("", selection: Binding(
+                    get: { model.wmKind },
+                    set: { model.wmKind = $0; model.saveWatermarkPrefs() }
+                )) {
+                    Text(L.s.settings.wmModeText).tag(WatermarkKind.text)
+                    Text(L.s.settings.wmModeImage).tag(WatermarkKind.image)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 180)
+                .accessibilityLabel(L.s.settings.wmMode)
+
+                if model.wmKind == .text {
+                    Field(icon: "signature") {
+                        TextField(L.s.settings.watermarkTextField, text: Binding(
+                            get: { model.wmText },
+                            set: { model.wmText = $0; model.saveWatermarkPrefs() }
+                        ))
+                    }
+                } else {
+                    watermarkImageSection
                 }
 
                 HStack(alignment: .top, spacing: 18) {
@@ -582,18 +614,36 @@ struct SettingsView: View {
                         .frame(width: 130)
                     }
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L.s.settings.size).font(.caption).foregroundStyle(.secondary)
-                        Picker("", selection: Binding(
-                            get: { model.wmScale },
-                            set: { model.wmScale = $0; model.saveWatermarkPrefs() }
-                        )) {
-                            Text(L.s.settings.sizeSmall).tag(0.02)
-                            Text(L.s.settings.sizeMedium).tag(0.03)
-                            Text(L.s.settings.sizeLarge).tag(0.045)
+                    // 两种模式的大小控件不是同一个:文字模式的"小/中/大"三档
+                    // 够用(字号合不合适只取决于读不读得清),而 logo 的合适
+                    // 尺寸随它自己的形状变——一枚细长的横条和一个方形图标在
+                    // 同一个比例下观感差很远,得给连续的数。
+                    if model.wmKind == .text {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L.s.settings.size).font(.caption).foregroundStyle(.secondary)
+                            Picker("", selection: Binding(
+                                get: { model.wmScale },
+                                set: { model.wmScale = $0; model.saveWatermarkPrefs() }
+                            )) {
+                                Text(L.s.settings.sizeSmall).tag(0.02)
+                                Text(L.s.settings.sizeMedium).tag(0.03)
+                                Text(L.s.settings.sizeLarge).tag(0.045)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 120)
                         }
-                        .pickerStyle(.segmented)
-                        .frame(width: 120)
+                    } else {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L.s.settings.wmImageSize(Int(model.wmImageScale * 100)))
+                                .font(.caption).foregroundStyle(.secondary)
+                            // 区间取自 Kit,不在这里写死:渲染那边会按同一个
+                            // 区间夹,两处各写一份的表现是"拖到底了还是没变大"。
+                            Slider(value: Binding(
+                                get: { model.wmImageScale },
+                                set: { model.wmImageScale = $0; model.saveWatermarkPrefs() }
+                            ), in: WatermarkKind.image.scaleRange)
+                            .frame(width: 130)
+                        }
                     }
                 }
 
@@ -609,6 +659,85 @@ struct SettingsView: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
+        }
+    }
+
+    /// 图片模式那一段:当前的 logo、换/删、去背景、以及让 AI 画一枚。
+    @ViewBuilder
+    private var watermarkImageSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                // 棋盘格垫底:一张透明底的 logo 放在纯色上看不出透明,而"这张
+                // 图到底有没有透明背景"正是这一页要帮用户回答的问题。
+                ZStack {
+                    Checkerboard()
+                    if let img = model.wmImagePreview {
+                        Image(nsImage: img).resizable().scaledToFit().padding(4)
+                    } else {
+                        Image(systemName: "photo").foregroundStyle(.tertiary)
+                    }
+                }
+                .frame(width: 76, height: 76)
+                .overlay(RoundedRectangle(cornerRadius: 4)
+                    .stroke(.white.opacity(0.12), lineWidth: 1))
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Button(model.wmImagePNG == nil
+                               ? L.s.settings.wmChooseImage : L.s.settings.wmReplaceImage) {
+                            model.wmChooseImage()
+                        }
+                        if model.wmImagePNG != nil {
+                            Button(L.s.settings.wmClearImage) { model.wmClearImage() }
+                        }
+                    }
+                    if model.wmImagePNG == nil {
+                        Text(L.s.settings.wmNoImage)
+                            .font(.caption).foregroundStyle(.tertiary)
+                    }
+                    // 不透明的图不拦下来,只在旁边多一个按钮:一枚白底 logo
+                    // 抠一下就能用,拦住等于让用户自己去找修图软件。
+                    if model.wmNeedsCutout {
+                        Text(L.s.settings.wmOpaqueNote)
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button(L.s.settings.wmCutout) {
+                            Task { await model.wmRemoveBackground() }
+                        }
+                        .disabled(model.wmBusy)
+                    }
+                }
+            }
+
+            if model.aiEnabled {
+                Divider().opacity(0.3)
+                Text(L.s.settings.wmGenTitle).font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Field(icon: "sparkles") {
+                        TextField(L.s.settings.wmGenPrompt, text: $model.wmPrompt)
+                            .onSubmit { Task { await model.wmGenerate() } }
+                    }
+                    Button(L.s.settings.wmGenButton) {
+                        Task { await model.wmGenerate() }
+                    }
+                    .disabled(!model.wmCanGenerate)
+                }
+                // 在途时说清楚"还在跑",否则按钮变灰看起来像是坏了。
+                if !model.wmGenID.isEmpty || model.wmBusy {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text(L.s.settings.wmGenPending)
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Text(L.s.settings.wmGenNote)
+                    .font(.caption2).foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text(L.s.settings.wmImageNote)
+                .font(.caption2).foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -901,5 +1030,29 @@ struct SettingsCard<Content: View>: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .panelSurface()
+    }
+}
+
+/// 透明度垫底的棋盘格。
+///
+/// 画出来而不是贴一张图片资源:这个 App 是纯代码构建的 SPM 目标,加一份图片
+/// 资源要连带一个 Bundle.module 的取用路径,而这里只需要两种颜色的方格。
+private struct Checkerboard: View {
+    var cell: Double = 8
+
+    var body: some View {
+        Canvas { ctx, size in
+            ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.white.opacity(0.10)))
+            let cols = Int((size.width / cell).rounded(.up))
+            let rows = Int((size.height / cell).rounded(.up))
+            for r in 0..<max(rows, 1) {
+                for c in 0..<max(cols, 1) where (r + c) % 2 == 0 {
+                    ctx.fill(Path(CGRect(x: Double(c) * cell, y: Double(r) * cell,
+                                         width: cell, height: cell)),
+                             with: .color(.black.opacity(0.18)))
+                }
+            }
+        }
+        .allowsHitTesting(false)
     }
 }

@@ -90,12 +90,56 @@ public enum StripLevel: String, Sendable, CaseIterable {
     }
 }
 
-/// 剥离后的回读结果。写文件这条链上任何一环出岔子都可能"看起来成功但元数据
-/// 还在",所以不信任写入返回值,一律回读为准。
+/// 一份文件里还剩什么可识别身份的东西。写文件这条链上任何一环出岔子都可能
+/// "看起来成功但元数据还在",所以不信任写入返回值,一律回读为准。
+///
+/// 它扫的不止 EXIF:同一份住址在一个文件里最多有三处拷贝(EXIF GPS、IPTC 的
+/// City/Sub-location、XMP 里的 exif:GPS* 与 photoshop:City),只查其中一处
+/// 等于没查——那正好会给出"已剥干净"的假保证,比不查更糟。
 public struct MetadataResidual: Sendable, Equatable {
     public var hasLocation: Bool
     public var hasDeviceInfo: Bool
     public var isPrivacyClean: Bool { !hasLocation && !hasDeviceInfo }
+}
+
+/// 剥不成的原因。分开列是因为调用方要拿它讲人话:"动图不支持"和"文件读不出来"
+/// 对用户是两件事,前者他能换张图,后者他得先修文件。
+public enum StripUnsupportedReason: String, Sendable, Equatable, CaseIterable {
+    /// ImageIO 打不开:文件损坏,或根本不是它认得的图片。
+    case unreadable
+    /// 多帧动图。整个模块与 LocalResize 同一纪律:不碰动图。
+    case animated
+    /// 读得了写不回同一格式。转格式是明令禁止的那件事,宁可不剥。
+    case unwritableFormat
+    /// 建临时文件或落盘失败:磁盘满、临时目录没权限之类。
+    case writeFailed
+}
+
+/// 剥离的结果。
+///
+/// 之前这里返回 `URL?`,nil 同时表示"不用剥"和"剥失败"——两者在调用方眼里
+/// 长得一模一样,只能一律原样上传。于是"回读发现 GPS 还在、产物已删"这个
+/// 最该拦住的情况,反而变成把带 GPS 的原件直接传上公网。类型本身必须能把
+/// 这两种分开,注释里写"宁可让调用方知道没剥成"是补不上的。
+public enum StripOutcome: Sendable, Equatable {
+    /// 这一档下本来就没有要删的东西(或档位是 .none)。原样上传是安全的。
+    case notNeeded
+    /// 剥好了,传这份临时文件。用完连它所在的整个目录一起删。
+    case stripped(URL)
+    /// 有该删的东西,但这个文件剥不了。**不允许**原样上传。
+    case unsupported(StripUnsupportedReason)
+    /// 剥完回读发现该删的还在,产物已删。**不允许**原样上传。
+    case verificationFailed(MetadataResidual)
+
+    /// 能不能把原件原样发出去。只有 notNeeded 能,两种失败都必须被拦下来
+    /// ——调用方要是把它们当"没做,照旧传"处理,就退回了当初那个洞。
+    public var allowsOriginal: Bool { self == .notNeeded }
+
+    /// 剥离产物;没有产物时为 nil(包括两种失败)。
+    public var strippedURL: URL? {
+        if case .stripped(let u) = self { return u }
+        return nil
+    }
 }
 
 /// EXIF 读取与剥离。
@@ -225,24 +269,38 @@ public enum ImageMetadata {
 
     // MARK: - 剥离
 
-    /// 剥离元数据,产出一份临时文件;返回 nil 表示没做(不需要做或做不成),
-    /// 调用方原样上传即可。
+    /// 剥离元数据,产出一份临时文件。结果四选一,见 `StripOutcome`——只有
+    /// `.notNeeded` 允许调用方原样上传,两种失败都必须拦住。
     ///
-    /// 默认开启回读校验:剥完再读一遍,GPS 或设备信息还在就删掉产物返回 nil,
-    /// 宁可让调用方知道"没剥成"去提示用户,也不能交出一份自以为干净的文件。
-    /// 关掉校验只在自检里用(要拿到脏产物才能断言校验本身有效)。
+    /// 默认开启回读校验:剥完再读一遍,该档承诺删掉的东西还在就删产物、报
+    /// `.verificationFailed`。关掉校验只在自检里用(要拿到脏产物才能断言校验
+    /// 本身有效)。
     public static func strippedCopy(of url: URL,
                                     level: StripLevel = .identifying,
-                                    verify: Bool = true) -> URL? {
-        guard level != .none else { return nil }
+                                    verify: Bool = true) -> StripOutcome {
+        guard level != .none else { return .notNeeded }
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
-              CGImageSourceGetCount(src) == 1 else { return nil }   // 动图不碰,与 LocalResize 同一纪律
-        guard let uti = CGImageSourceGetType(src) else { return nil }
+              CGImageSourceGetCount(src) >= 1 else { return .unsupported(.unreadable) }
+
+        // 先看这张图到底有没有该删的东西。没有就别动它:重写容器会换掉字节
+        // 与 SHA,秒传去重和监控目录的清单都跟着落空;截图、微信转发过的图、
+        // 已经缩放过的临时文件都属于这一类,占了上传量的大半。
+        //
+        // .all 不走这条捷径:它承诺"除方向外全删",比 residual 衡量的隐私口径
+        // 宽(曝光参数不算隐私但归它删),拿隐私口径给它放行会漏掉那一批。
+        if level != .all, level.isSatisfied(by: residual(url)) { return .notNeeded }
+
+        // 到这里说明确实有东西要删。以下任何一步过不去都是阻断性的:剥不掉又
+        // 传出去,正是这个函数存在要防的事。
+        guard CGImageSourceGetCount(src) == 1 else { return .unsupported(.animated) }
+        guard let uti = CGImageSourceGetType(src) else { return .unsupported(.unwritableFormat) }
         // 写不回同一格式就别写:转格式是 LocalResize 头注明令禁止的那件事。
         let writable = (CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? []
-        guard writable.contains(uti as String) else { return nil }
+        guard writable.contains(uti as String) else { return .unsupported(.unwritableFormat) }
 
-        guard let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] else { return nil }
+        guard let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] else {
+            return .unsupported(.unreadable)
+        }
         let orientation = props[kCGImagePropertyOrientation] as? Int ?? 1
 
         let dir = FileManager.default.temporaryDirectory
@@ -253,7 +311,7 @@ public enum ImageMetadata {
 
         guard let dst = CGImageDestinationCreateWithURL(out as CFURL, uti, 1, nil) else {
             try? FileManager.default.removeItem(at: dir)
-            return nil
+            return .unsupported(.writeFailed)
         }
         // AddImageFromSource 而非 AddImage:前者整段搬运已压缩的数据,像素逐位
         // 不变;后者会解码再编码,给 JPEG 白叠一代有损。
@@ -262,23 +320,156 @@ public enum ImageMetadata {
             removalProperties(level: level, sourceKeys: Set(props.keys), orientation: orientation) as CFDictionary)
         guard CGImageDestinationFinalize(dst) else {
             try? FileManager.default.removeItem(at: dir)
-            return nil
+            return .unsupported(.writeFailed)
         }
 
-        if verify, !level.isSatisfied(by: residual(out)) {
-            try? FileManager.default.removeItem(at: dir)
-            return nil
+        if verify {
+            let left = residual(out)
+            if !level.isSatisfied(by: left) {
+                try? FileManager.default.removeItem(at: dir)
+                return .verificationFailed(left)
+            }
         }
-        return out
+        return .stripped(out)
     }
 
-    /// 回读校验:这份文件里还剩什么可识别身份的东西。
+    /// 残留扫描:这份文件里还剩什么能指认地点或身份的东西。
+    ///
+    /// 不复用 `parseExif`——那份解析是给界面展示用的,只认 {Exif}/{TIFF}/
+    /// {ExifAux}/{GPS} 四本字典。拿它当回读校验,IPTC 的 City/Sub-location 和
+    /// XMP 里的 photoshop:City 全在视野之外:removalProperties 明明在删 IPTC,
+    /// 校验却看不见它,一旦哪天删漏了就会给出"已剥干净"的假保证。所以这里
+    /// 直读属性字典 + 单独扫一遍 XMP,与展示路径彻底分开。
     public static func residual(_ url: URL) -> MetadataResidual {
-        let info = exif(url)
-        return MetadataResidual(
-            hasLocation: info.hasLocation || info.altitude != nil,
-            hasDeviceInfo: info.cameraMake != nil || info.cameraModel != nil
-                || info.lensModel != nil || info.software != nil)
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              CGImageSourceGetCount(src) >= 1 else {
+            // 读不出来就谈不上残留。真正要紧的"读不出来"由 strippedCopy 单独
+            // 报 .unreadable,不在这里混成"干净"。
+            return MetadataResidual(hasLocation: false, hasDeviceInfo: false)
+        }
+        var location = false
+        var device = false
+
+        if let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] {
+            // GPS 只要这本字典还在且非空就算有:里面每个键都是坐标的一部分,
+            // 逐键点名反而会漏掉只写了 GPSAreaInformation 之类的怪文件。
+            if let gps = props[kCGImagePropertyGPSDictionary] as? [CFString: Any], !gps.isEmpty {
+                location = true
+            }
+
+            let iptc = props[kCGImagePropertyIPTCDictionary] as? [CFString: Any] ?? [:]
+            for key in iptcLocationKeys where hasValue(iptc[key]) { location = true }
+            for key in iptcIdentityKeys where hasValue(iptc[key]) { device = true }
+
+            let exif = props[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:]
+            for key in exifIdentityKeys where hasValue(exif[key]) { device = true }
+
+            let tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
+            for key in tiffIdentityKeys where hasValue(tiff[key]) { device = true }
+
+            let aux = props[kCGImagePropertyExifAuxDictionary] as? [CFString: Any] ?? [:]
+            for key in auxIdentityKeys where hasValue(aux[key]) { device = true }
+
+            // MakerNote 是私有二进制块,内容不可知——不可知就当作有身份信息。
+            if props.keys.contains(where: { ($0 as String).hasPrefix("{Maker") }) { device = true }
+        }
+
+        // XMP 是与 EXIF 并存的第二套元数据,属性字典未必映射得全(自定义命名
+        // 空间根本没有对应键),必须单独走一遍标签。
+        if let md = CGImageSourceCopyMetadataAtIndex(src, 0, nil) {
+            CGImageMetadataEnumerateTagsUsingBlock(
+                md, nil,
+                [kCGImageMetadataEnumerateRecursively: kCFBooleanTrue!] as CFDictionary
+            ) { path, tag in
+                // 和属性字典那一路一样要过 hasValue,而不是只看路径存不存在。
+                //
+                // ImageIO 在为 PNG 重建 XMP 时会凭空写进一个**空的** dc:rights
+                // ——源文件里本来没有。只比路径的话,每张剥过的 PNG 回读都会被
+                // 判成"没剥干净",产物删掉、永久拒传。空壳不是残留。
+                guard hasValue(CGImageMetadataTagCopyValue(tag)) else { return true }
+                let p = (path as String).lowercased()
+                if p.hasPrefix("exif:gps") || xmpLocationPaths.contains(p) { location = true }
+                if xmpIdentityPaths.contains(p) { device = true }
+                return true
+            }
+        }
+
+        return MetadataResidual(hasLocation: location, hasDeviceInfo: device)
+    }
+
+    // 残留扫描的键表。分成"地点"与"身份"两组,因为 .location 档只承诺删前者
+    // ——两组混在一起会把每一次 .location 剥离都判成失败。
+
+    private static var iptcLocationKeys: [CFString] { [
+        kCGImagePropertyIPTCCity,
+        kCGImagePropertyIPTCSubLocation,
+        kCGImagePropertyIPTCProvinceState,
+        kCGImagePropertyIPTCCountryPrimaryLocationName,
+        kCGImagePropertyIPTCCountryPrimaryLocationCode,
+    ] }
+
+    private static var iptcIdentityKeys: [CFString] { [
+        kCGImagePropertyIPTCByline,
+        kCGImagePropertyIPTCBylineTitle,
+        kCGImagePropertyIPTCCredit,
+        kCGImagePropertyIPTCSource,
+        kCGImagePropertyIPTCContact,
+        kCGImagePropertyIPTCCopyrightNotice,
+    ] }
+
+    // ExifSubjectLocation 不在列:它是画面里主体的像素坐标,不是地理位置,
+    // 名字骗人。
+    private static var exifIdentityKeys: [CFString] { [
+        kCGImagePropertyExifBodySerialNumber,
+        kCGImagePropertyExifCameraOwnerName,
+        kCGImagePropertyExifUserComment,
+        kCGImagePropertyExifLensMake,
+        kCGImagePropertyExifLensModel,
+        kCGImagePropertyExifLensSerialNumber,
+    ] }
+
+    private static var tiffIdentityKeys: [CFString] { [
+        kCGImagePropertyTIFFMake,
+        kCGImagePropertyTIFFModel,
+        kCGImagePropertyTIFFSoftware,
+        kCGImagePropertyTIFFArtist,
+        kCGImagePropertyTIFFCopyright,
+        kCGImagePropertyTIFFHostComputer,
+    ] }
+
+    private static var auxIdentityKeys: [CFString] { [
+        kCGImagePropertyExifAuxLensModel,
+        kCGImagePropertyExifAuxSerialNumber,
+        kCGImagePropertyExifAuxLensSerialNumber,
+        kCGImagePropertyExifAuxOwnerName,
+    ] }
+
+    /// XMP 里的地点。dc:coverage 是 Dublin Core 的空间/时间范围,写地名的人
+    /// 不少;photoshop:* 与 Iptc4xmpCore:* 是 IPTC 地点字段的 XMP 镜像。
+    private static let xmpLocationPaths: Set<String> = [
+        "dc:coverage",
+        "photoshop:city", "photoshop:state", "photoshop:country",
+        "iptc4xmpcore:location", "iptc4xmpcore:countrycode",
+        "iptc4xmpext:locationshown", "iptc4xmpext:locationcreated",
+    ]
+
+    /// XMP 里的身份。dc:creator 走的是自定义命名空间,属性字典里没有对应键
+    /// ——它是"只查属性字典查不全"最直接的证据。
+    private static let xmpIdentityPaths: Set<String> = [
+        "dc:creator", "dc:contributor", "dc:publisher", "dc:rights",
+        "tiff:make", "tiff:model", "tiff:artist", "tiff:software",
+        "exif:usercomment", "exifex:bodyserialnumber", "exifex:cameraownername",
+        "aux:serialnumber", "aux:lensserialnumber", "aux:lens", "aux:ownername",
+    ]
+
+    /// 键存在还不够——空串和空数组是 ImageIO 常留下的空壳,当成残留会把每次
+    /// 剥离都判成失败。
+    private static func hasValue(_ v: Any?) -> Bool {
+        guard let v else { return false }
+        if let s = v as? String { return !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if let d = v as? Data { return !d.isEmpty }
+        if let a = v as? [Any] { return !a.isEmpty }
+        return true
     }
 
     /// 构造交给 ImageIO 的"删除清单"。
@@ -343,9 +534,12 @@ public enum ImageMetadata {
     }
 }
 
-// XMP 不必单独处理。实测(Xcode-beta / macOS 27 SDK):只要给
+// 删 XMP 不必单独写代码,查 XMP 必须。实测(Xcode-beta / macOS 27 SDK):只要给
 // AddImageFromSource 传了属性字典,ImageIO 就按属性重建整份 XMP,源文件里
 // 的 XMP 标签——包括 dc:creator 这类自定义命名空间——不会被抄过去。曾想过
 // 额外塞 kCGImageDestinationMetadata + MergeMetadata=false 兜底,对照实验
 // 表明两者产出完全一致,那段代码是纯噪声,故删。
 // 若哪天换了系统版本行为变了,ImageMeta 的自检会先炸(见 KitCheck)。
+//
+// 但"删"能靠系统行为,"查"不行:residual 必须自己去翻 XMP 标签。校验的全部
+// 意义就是不信任上面这段实测结论——拿同一条假设既去删又去查,等于没查。

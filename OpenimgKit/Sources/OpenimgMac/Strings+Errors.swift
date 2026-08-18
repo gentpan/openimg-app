@@ -1,4 +1,5 @@
 import Foundation
+import OpenimgKit
 
 /// AppModel 的提示条、错误映射与确认对话框文案。
 ///
@@ -34,6 +35,13 @@ struct ErrorStrings: Sendable {
     let fileTooLarge: @Sendable (String) -> String
     /// 参数:扩展名(已转大写)
     let formatNotAllowed: @Sendable (String) -> String
+    /// 元数据剥离失败。参数:说不通的那一句(由下面两个拼出来)。
+    /// 这不是"处理失败"而是"没敢传"——话不说清楚,用户会当成网络抖动去重试。
+    let stripBlocked: @Sendable (String) -> String
+    /// 剥不成的原因短语。
+    let stripReason: @Sendable (StripUnsupportedReason) -> String
+    /// 剥完回读发现还在。这一条最该让用户看见:说明这张图确实带着定位。
+    let stripVerifyFailed: String
 
     // 账号安全
     /// 参数:收到验证码的邮箱
@@ -72,6 +80,16 @@ extension ErrorStrings {
         uploadedMany: { n in "已上传 \(n) 张，最后一条链接已复制" },
         fileTooLarge: { limit in "超过单文件上限 \(limit)" },
         formatNotAllowed: { ext in "你的用户组不支持 \(ext)" },
+        stripBlocked: { why in "未上传：抹不掉图里的定位与设备信息（\(why)）" },
+        stripReason: { reason in
+            switch reason {
+            case .unreadable: "这个文件读不出来"
+            case .animated: "动图不支持"
+            case .unwritableFormat: "系统写不回这个格式"
+            case .writeFailed: "临时文件写入失败"
+            }
+        },
+        stripVerifyFailed: "抹除后复查发现信息仍在",
 
         codeSentTo: { email in "验证码已发到 \(email)" },
         passwordChanged: "密码已修改",
@@ -109,6 +127,16 @@ extension ErrorStrings {
         uploadedMany: { n in "Uploaded \(n) images — last link copied" },
         fileTooLarge: { limit in "Over the \(limit) per-file limit" },
         formatNotAllowed: { ext in "Your tier doesn’t allow \(ext)" },
+        stripBlocked: { why in "Not uploaded: the location and device info couldn’t be removed (\(why))" },
+        stripReason: { reason in
+            switch reason {
+            case .unreadable: "this file can’t be read"
+            case .animated: "animated images aren’t supported"
+            case .unwritableFormat: "this format can’t be written back"
+            case .writeFailed: "writing the temporary file failed"
+            }
+        },
+        stripVerifyFailed: "the check after removal still found it",
 
         codeSentTo: { email in "Verification code sent to \(email)" },
         passwordChanged: "Password changed",

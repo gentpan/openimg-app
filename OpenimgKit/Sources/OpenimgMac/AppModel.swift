@@ -202,25 +202,143 @@ final class AppModel: ObservableObject {
     /// upload() 的并发调用计数——uploading 只在归零时熄灭。
     private var activeUploads = 0
 
-    // 水印偏好——纯本机合成,不上服务器,所以存 UserDefaults 而非账号偏好
+    /// 上传前抹除元数据。默认开。
+    ///
+    /// 默认开而不是默认关:图床发出去的是公开外链,一张带 GPS 的照片等于把
+    /// 拍摄地点一起发出去,而知道 EXIF 里有 GPS 的人远少于会随手发链接的人。
+    /// 让想留原始元数据的人自己去关,比让不知情的人自己去开安全得多。
+    ///
+    /// 与 wm* 一样存 UserDefaults 而非账号偏好:剥离发生在这台 Mac 上,服务器
+    /// 无从执行,存到账号里只会让另一台设备以为自己也剥了。
+    @Published var stripMetadata = (UserDefaults.standard.object(forKey: "stripMetadata") as? Bool) ?? true {
+        didSet {
+            guard oldValue != stripMetadata else { return }
+            UserDefaults.standard.set(stripMetadata, forKey: "stripMetadata")
+        }
+    }
+
+    /// 开关对应的档位。界面上只给开/关两个位置,没把四档都摆出来:「删多少」
+    /// 用户判断不了,而中间档的差别只有摄影者在意——他们要的正好是默认档
+    /// .identifying 保留下来的曝光参数。
+    var stripLevel: StripLevel { stripMetadata ? .identifying : .none }
+
+    /// 剥离结果该不该拦下这张图;nil 表示可以传。
+    ///
+    /// 拦的判据是 stripFailureBlocks——"剥不成"本身不够,还要这一张**确实带着
+    /// 定位**、而且服务端也不会替我们清掉。理由写在那个函数里。
+    func stripBlockReason(_ outcome: StripOutcome, source: URL) -> String? {
+        guard stripFailureBlocks(outcome, source: source) else { return nil }
+        switch outcome {
+        case .notNeeded, .stripped: return nil
+        case .unsupported(let reason): return L.s.errors.stripBlocked(L.s.errors.stripReason(reason))
+        case .verificationFailed: return L.s.errors.stripBlocked(L.s.errors.stripVerifyFailed)
+        }
+    }
+
+    /// 上传前的最后一道闸。放在缩放与水印**之后**——那两步各自产出新的临时
+    /// 文件,只有守在真正要发出去的那份字节上才没有绕过去的路。缩放本身只写
+    /// 像素、不抄元数据,所以优化模式下这一步多半直接得到 .notNeeded,不会白
+    /// 多一次读写。
+    func stripBeforeUpload(_ url: URL) async -> StripOutcome {
+        let level = stripLevel
+        // 读写整个文件,别占着主线程——上传循环是串行的,一张 40MB 的 raw
+        // 能让界面卡住肉眼可见的一下。
+        return await Task.detached { ImageMetadata.strippedCopy(of: url, level: level) }.value
+    }
+
+    /// 剥不成的时候,这一张到底该不该拦住。
+    ///
+    /// 直接把"剥不成"一律当阻断,会把带元数据的 WebP 整类挡在门外——macOS 的
+    /// ImageIO 写不了 WebP(长期如此,不是本机配置问题),而 WebP 截图相当常见。
+    /// 拿产品可用性换一个多数情况下根本不存在的风险,不划算。
+    ///
+    /// 真实的风险面比"剥不成"窄得多,因为**服务端本来就剥**:
+    ///   - 优化模式:vips 会 RemoveMetadata 并重新编码,元数据一个不剩;
+    ///   - 原样模式:只对 JPEG 抹 GPS(StripGPSFromJPEG),其余格式原样存。
+    /// 所以客户端剥离真正补的缺口只有一个——**原样模式下的非 JPEG**。
+    ///
+    /// 于是判据收成两条:优化模式一律放行;原样模式下只有"确实查出定位信息、
+    /// 而本机又剥不掉"才拦。剥不成但本来就没有定位的(绝大多数截图)照常传。
+    func stripFailureBlocks(_ outcome: StripOutcome, source: URL) -> Bool {
+        if case .stripped = outcome { return false }
+        if outcome.allowsOriginal { return false }
+        // 服务端会重新编码,客户端这一步只是提前量。
+        if uploadMode == .optimized { return false }
+        // 原样模式:只有真的带着定位才拦。verificationFailed 已经带着扫描结果,
+        // 不必再读一次盘。
+        if case .verificationFailed(let residual) = outcome { return residual.hasLocation }
+        return ImageMetadata.residual(source).hasLocation
+    }
+
+    // 水印偏好——纯本机合成,不上服务器,所以存 UserDefaults 而非账号偏好。
+    // 唯一的例外是那枚 logo:几百 KB 的二进制归 WatermarkStore 管,理由写在
+    // 那个类型的头注里(UserDefaults 会把整份 plist 在启动时读进内存)。
+    @Published var wmKind = WatermarkKind(
+        rawValue: UserDefaults.standard.string(forKey: "wmKind") ?? "") ?? .text
     @Published var wmText = UserDefaults.standard.string(forKey: "wmText") ?? ""
     @Published var wmAnchor = (UserDefaults.standard.object(forKey: "wmAnchor") as? Int) ?? 8
     @Published var wmOpacity = (UserDefaults.standard.object(forKey: "wmOpacity") as? Double) ?? 0.45
-    @Published var wmScale = (UserDefaults.standard.object(forKey: "wmScale") as? Double) ?? 0.03
+    /// 文字模式的字号比例。
+    @Published var wmScale = (UserDefaults.standard.object(forKey: "wmScale") as? Double)
+        ?? WatermarkKind.text.defaultScale
+    /// 图片模式的 logo 宽度比例。**单独一个键**,不与 wmScale 共用。
+    ///
+    /// 两个数含义不同(字号 vs logo 整幅宽度)、量级差四倍。共用一个键的表现
+    /// 是:从文字切到图片,那枚 logo 按 3% 贴上去小到看不见;再切回文字,字号
+    /// 按 12% 糊掉半张图。切模式不该改变另一种模式下已经调好的样子。
+    @Published var wmImageScale = (UserDefaults.standard.object(forKey: "wmImageScale") as? Double)
+        ?? WatermarkKind.image.defaultScale
     @Published var wmAutoWatch = UserDefaults.standard.bool(forKey: "wmAutoWatch")
 
+    /// 当前水印图的 PNG 字节。启动时从磁盘读一次就常驻:监控目录连传二十张
+    /// 就是二十次同样的读,而这份字节最多 1024px 见方。
+    @Published var wmImagePNG: Data?
+    /// 水印图的预览位图。与 wmImagePNG 同步维护,不在 body 里现解——SwiftUI
+    /// 的 body 一秒能跑几十次,每次解一张 1024px 的 PNG 是白烧 CPU。
+    ///
+    /// NSImage 只在主 actor 上被创建和读取(AppModel 整个是 @MainActor),
+    /// 不跨并发边界。
+    @Published var wmImagePreview: NSImage?
+    /// 这张水印图整幅不透明——贴上去会是个方块。界面据此给出「去背景」入口,
+    /// 而不是把这张图拦下来:一枚白底 logo 抠一下就能用,拦住等于让用户自己
+    /// 去找修图软件。
+    @Published var wmImageOpaque = false
+    /// 去背景 / AI 生成正在跑。两件事共用一个标志:它们都要独占那枚 logo,
+    /// 同时点两下的结果是后到的覆盖先到的,而用户看不出发生了什么。
+    @Published var wmBusy = false
+    /// AI 生成水印的在途记录 id。
+    ///
+    /// 落 UserDefaults 是为了 App 重启后还能接上:上游要几十秒,这期间关掉
+    /// App 并不罕见,而那次生成的额度已经扣掉了。丢了这个 id,图还是会进图库
+    /// (与其它 AI 产出一视同仁),但"顺手设成当前水印"那一步就断了。
+    @Published var wmGenID = UserDefaults.standard.string(forKey: "wmGenID") ?? ""
+    /// 生成水印用的描述。不持久化——它是一次性的。
+    @Published var wmPrompt = ""
+
     func watermarkSpec() -> WatermarkSpec? {
-        let t = wmText.trimmingCharacters(in: .whitespaces)
-        guard !t.isEmpty else { return nil }
-        return WatermarkSpec(text: t, anchor: wmAnchor, opacity: wmOpacity, scale: wmScale)
+        let spec: WatermarkSpec
+        switch wmKind {
+        case .text:
+            spec = WatermarkSpec(text: wmText.trimmingCharacters(in: .whitespaces),
+                                 anchor: wmAnchor, opacity: wmOpacity, scale: wmScale)
+        case .image:
+            guard let png = wmImagePNG else { return nil }
+            spec = WatermarkSpec(imagePNG: png, anchor: wmAnchor,
+                                 opacity: wmOpacity, scale: wmImageScale)
+        }
+        // 交给 Kit 判"渲染得出东西吗",不在这里再写一遍 text 非空:两处判断
+        // 分头写,迟早有一处漏掉新的模式。
+        return spec.isRenderable ? spec : nil
     }
 
     func saveWatermarkPrefs() {
         let d = UserDefaults.standard
+        d.set(wmKind.rawValue, forKey: "wmKind")
         d.set(wmText, forKey: "wmText")
         d.set(wmAnchor, forKey: "wmAnchor")
         d.set(wmOpacity, forKey: "wmOpacity")
         d.set(wmScale, forKey: "wmScale")
+        d.set(wmImageScale, forKey: "wmImageScale")
         d.set(wmAutoWatch, forKey: "wmAutoWatch")
         d.set(editOnDrop, forKey: "editOnDrop")
     }
@@ -278,6 +396,10 @@ final class AppModel: ObservableObject {
 
     init() {
         token = store.load(server: server) ?? ""
+        // 水印图从磁盘读一次就常驻。同步读:它最多 1024px 见方的 PNG,而
+        // 异步读的代价是启动那一瞬间设置页会显示"还没设过水印图",然后突然
+        // 冒出一枚——看起来像是刚被谁设上去的。
+        wmAdopt(WatermarkStore.load())
     }
 
     func client() throws -> OpenimgClient {
@@ -419,6 +541,10 @@ final class AppModel: ObservableObject {
             await loadStats()
             await aiLoadStatus()
             watchSetup()
+            // 上次那条「生成水印」还悬着就接着等。额度在提交那一刻就扣了,
+            // 关一次 App 不该让那张图白生成——不接的话它仍会进图库,只是
+            // "顺手设成当前水印"那一步断了。
+            Task { await wmResumeGeneration() }
             if !quiet {
                 announce(L.s.errors.connected(me.email, warning))
                 section = .overview
@@ -787,6 +913,27 @@ final class AppModel: ObservableObject {
                 }
             }
             defer { if let temp { try? FileManager.default.removeItem(at: temp) } }
+
+            // 抹除定位与设备身份。剥不成就**不传**:这条路发出去的是公开外链,
+            // 一张剥不干净的照片传上去就收不回来了,失败当成阻断而不是"算了
+            // 照旧传"。
+            var stripTemp: URL?
+            let outcome = await stripBeforeUpload(toSend)
+            if let reason = stripBlockReason(outcome, source: toSend) {
+                if let k = row(item.id) { queue[k].state = .failed(reason) }
+                announce(reason)
+                continue
+            }
+            if let clean = outcome.strippedURL {
+                toSend = clean
+                stripTemp = clean
+                if let k = row(item.id) {
+                    queue[k].sentBytes =
+                        (try? clean.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
+                }
+            }
+            // strippedCopy 把产物放在自己的一次性目录里,连目录一起删。
+            defer { if let s = stripTemp { try? FileManager.default.removeItem(at: s.deletingLastPathComponent()) } }
 
             do {
                 let id = item.id

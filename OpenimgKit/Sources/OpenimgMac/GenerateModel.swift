@@ -28,7 +28,19 @@ extension AppModel {
         Section_.allCases.filter { !$0.needsAI || aiEnabled }
     }
 
+    /// 本站免费额度还剩几次。
     var aiRemaining: Int { aiStatus?.remaining ?? 0 }
+
+    /// 这一刻到底还能不能生成。
+    ///
+    /// 本站额度见底不等于不能生成:关联了 pic.bi 且那边还有钱时,服务端会自动
+    /// 接管(本地先扣、扣不动才走远程)。只看 aiRemaining 会把按钮封死在
+    /// 「pic.bi 正该出场」的那一刻,整条付费路径永远走不到——而 AIStatus 里
+    /// 早就有 canGenerate 把这件事算好了,两处各算各的迟早说出两种话。
+    var aiCanUse: Bool { aiStatus?.canGenerate ?? false }
+
+    /// pic.bi 那边还剩多少。没关联就是 0。
+    var aiPicbiRemaining: Int { aiStatus?.picbiRemaining ?? 0 }
 
     /// 有没有一页 AI 界面正在屏幕上。轮询以它为总闸。
     ///
@@ -78,7 +90,7 @@ extension AppModel {
     var aiPromptTooLong: Bool { aiPromptLength > aiPromptLimit }
 
     var aiCanSubmit: Bool {
-        aiEnabled && !aiSubmitting && aiRemaining > 0
+        aiEnabled && !aiSubmitting && aiCanUse
             && aiPromptLength > 0 && !aiPromptTooLong
     }
 

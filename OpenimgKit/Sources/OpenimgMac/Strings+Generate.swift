@@ -48,6 +48,8 @@ struct GenerateStrings: Sendable {
     /// 今日已用 / 每日上限。
     let todayValue: @Sendable (Int, Int) -> String
     let monthlyLabel: String
+    /// 关联 pic.bi 之后,那边还剩多少积分。
+    let picbiLabel: String
     /// 本月余额 / 每月配给。余额可以靠签到超过配给,所以两个数不是包含关系。
     let monthlyValue: @Sendable (Int, Int) -> String
     /// 今天用完了:等明天。参数是每日上限。
@@ -102,6 +104,7 @@ extension GenerateStrings {
         todayLabel: "今日已用",
         todayValue: { used, limit in "\(used) / \(limit)" },
         monthlyLabel: "本月余额",
+        picbiLabel: "pic.bi",
         monthlyValue: { credits, monthly in "\(credits) / \(monthly)" },
         dailyExhausted: { limit in "今天的 \(limit) 次已经用完，明天再来" },
         monthlyExhausted: "这个月的次数已经用完，签到可以再攒一些",
@@ -158,6 +161,7 @@ extension GenerateStrings {
         todayLabel: "Used today",
         todayValue: { used, limit in "\(used) / \(limit)" },
         monthlyLabel: "This month",
+        picbiLabel: "pic.bi",
         monthlyValue: { credits, monthly in "\(credits) / \(monthly)" },
         dailyExhausted: { limit in "That's all \(limit) for today — come back tomorrow" },
         monthlyExhausted: "You're out for this month. Checking in daily earns more.",

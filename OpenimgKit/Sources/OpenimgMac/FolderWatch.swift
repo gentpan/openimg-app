@@ -289,6 +289,24 @@ extension AppModel {
             }
             defer { if let editTemp { try? FileManager.default.removeItem(at: editTemp.deletingLastPathComponent()) } }
 
+            // 抹除定位与设备身份,放在缩放与水印之后守住最终字节。这条路比手动
+            // 上传更要紧:目录一挂上就没人再逐张过目,整个相册会自己流上公网。
+            var stripTemp: URL?
+            let outcome = await stripBeforeUpload(toSend)
+            if let reason = stripBlockReason(outcome, source: toSend) {
+                // 跳过而不是暂停整轮:剥不成是这一张的问题(动图、怪格式),
+                // 换下一张多半就好了。进 watchSkip 免得每轮重试同一张。
+                watchSkip.insert(path)
+                failed += 1
+                watchLastIssue = reason
+                continue
+            }
+            if let clean = outcome.strippedURL {
+                toSend = clean
+                stripTemp = clean
+            }
+            defer { if let s = stripTemp { try? FileManager.default.removeItem(at: s.deletingLastPathComponent()) } }
+
             do {
                 let res = try await watchUploadWithBackoff(toSend, filename: url.lastPathComponent)
                 watchManifest.record(.init(path: path, size: f.size, mtime: f.mtime,

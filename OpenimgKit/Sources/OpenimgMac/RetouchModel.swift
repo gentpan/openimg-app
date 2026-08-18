@@ -29,7 +29,7 @@ extension AppModel {
     var retouchPromptTooLong: Bool { retouchPromptLength > aiPromptLimit }
 
     var retouchCanSubmit: Bool {
-        aiEnabled && !retouchSubmitting && aiRemaining > 0
+        aiEnabled && !retouchSubmitting && aiCanUse
             && !retouchSources.isEmpty
             && retouchPromptLength > 0 && !retouchPromptTooLong
     }

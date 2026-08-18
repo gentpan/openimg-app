@@ -433,6 +433,20 @@ public struct OpenimgClient: Sendable {
         ])
     }
 
+    /// 递交一次「画一枚水印」。
+    ///
+    /// 与 `aiGenerate` 是同一个接口,只多带一个 `purpose`。尺寸与画质档不在
+    /// 这里传:透明底要换模型、`background` 与 `output_format` 必须成对出现、
+    /// 比例锁 1:1、档位锁最便宜的 1k——这几条彼此绑死,归后端一处决定
+    /// (`aiWatermarkPlan`)。客户端自己拼那几个参数,等于把"哪个模型认哪个
+    /// 键"这条会随上游变的知识复制一份过来,而拼错的表现是拿回一张不透明的
+    /// 图、全程没有一处报错。
+    ///
+    /// 产出的图照常进图库,与别的 AI 产出没有区别。
+    public func aiGenerateWatermark(prompt: String) async throws -> AIGeneration {
+        try await submitAI("api/ai/generate", ["prompt": prompt, "purpose": "watermark"])
+    }
+
     /// 递交一次修图:一句描述加上 1~4 张图库里的图。
     ///
     /// 只传图片 id。后端换成公开 CDN 地址交给上游,全程没有一份图片字节经过
