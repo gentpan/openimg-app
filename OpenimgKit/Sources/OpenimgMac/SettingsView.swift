@@ -869,7 +869,10 @@ struct SettingsView: View {
     }
 
     private func tag(_ s: String) -> some View {
-        Text(s)
+        // 首字母大写只在显示这一层做,不动服务端的取值。role/tier 在接口里是
+        // 小写标识("admin"/"user"/"free"),拿它当界面文案直接印出来才显得像
+        // 调试输出。中文之类没有大小写的语言,capitalized 原样返回。
+        Text(s.prefix(1).uppercased() + s.dropFirst())
             .font(.caption2.weight(.medium))
             .foregroundStyle(Color.brand)
             .padding(.horizontal, 7).padding(.vertical, 2)
