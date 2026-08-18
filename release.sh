@@ -50,6 +50,29 @@ ditto -c -k --keepParent "$APP" "$ZIP"
 echo "4/5 验证…"
 spctl -a -vv "$APP" 2>&1 | sed 's/^/  /'
 
+# spctl 查的是签名与公证,不查授权有没有被描述文件授权。v0.2.0 就是这么发出
+# 去一个 spctl 全绿、却谁都打不开的包的(受限授权缺描述文件 → AMFI 拒绝加载,
+# 报 "Launchd job spawn failed")。所以这里真的起一次。
+#
+# 带隔离属性起,走的才是用户下载后的那条路径。
+echo "  真实启动自检…"
+LAUNCH_DIR=$(mktemp -d)
+trap 'rm -rf "$LAUNCH_DIR"' EXIT
+ditto "$APP" "$LAUNCH_DIR/Openimg.app"
+xattr -r -w com.apple.quarantine "0083;00000000;Safari;" "$LAUNCH_DIR/Openimg.app"
+pkill -x Openimg 2>/dev/null || true
+sleep 1
+/usr/bin/open -n "$LAUNCH_DIR/Openimg.app" >"$LAUNCH_DIR/err.txt" 2>&1 || true
+sleep 6
+if pgrep -x Openimg >/dev/null; then
+  echo "  ✓ 能启动"
+  pkill -x Openimg 2>/dev/null || true
+else
+  echo "  ✗ 启动失败,不发布:" >&2
+  cat "$LAUNCH_DIR/err.txt" >&2
+  exit 1
+fi
+
 echo "5/5 创建 GitHub Release…"
 gh release create "$VERSION" "$ZIP" \
   --title "$VERSION" \

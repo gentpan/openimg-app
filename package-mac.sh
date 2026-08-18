@@ -103,10 +103,42 @@ sed -i "" -e "s|@@APP_VERSION@@|$APP_VERSION|" -e "s|@@APP_BUILD@@|$APP_BUILD|" 
 # List what is available with: security find-identity -v -p codesigning
 ENTITLEMENTS="$ROOT/Resources/OpenimgMac.entitlements"
 if [ -n "${SIGN_IDENTITY:-}" ]; then
-  codesign --force --options runtime --timestamp \
-           --sign "$SIGN_IDENTITY" \
-           --entitlements "$ENTITLEMENTS" \
-           --identifier io.openimg.mac "$APP"
+  # $(AppIdentifierPrefix) 是 Xcode 的构建变量,由 Xcode 在构建时替换成团队
+  # 前缀。我们是手工 codesign,没有任何东西会去展开它——原样签进去就是一条
+  # 字面量为 "$(AppIdentifierPrefix)io.openimg.mac" 的非法授权,而 hardened
+  # runtime 下 launchd 会直接拒绝启动(报 "Launchd job spawn failed"),
+  # spctl 却照样说 accepted。adhoc 签名不校验授权,所以这个坑只在正式签名的
+  # 包上才炸,而那正是发给用户的那一份。
+  #
+  # 团队 ID 从身份字符串末尾的括号里取:"Developer ID Application: X (TEAMID)"。
+  TEAM_ID=$(printf '%s' "$SIGN_IDENTITY" | sed -n 's/.*(\([A-Z0-9]*\))$/\1/p')
+  [ -n "$TEAM_ID" ] || { echo "从签名身份里取不到团队 ID: $SIGN_IDENTITY" >&2; exit 1; }
+  # 受限授权(keychain-access-groups / associated-domains)必须由一份嵌在
+  # bundle 里的描述文件授权。没有它,AMFI 会拒绝加载进程,表现是
+  # "Launchd job spawn failed",而 spctl 照样说 accepted——它查的是签名与
+  # 公证,不查授权有没有被授权。v0.2.0 就是这么发出去一个谁都打不开的包的。
+  PROFILE="${PROVISION_PROFILE:-$ROOT/Resources/Openimg.provisionprofile}"
+  if [ -f "$PROFILE" ]; then
+    cp "$PROFILE" "$APP/Contents/embedded.provisionprofile"
+    echo "  已嵌入描述文件：$(basename "$PROFILE")"
+  else
+    echo "  !! 没有描述文件,将不带授权签名 —— app 内的 Passkey 会失效" >&2
+    echo "     (放到 Resources/Openimg.provisionprofile 或设 PROVISION_PROFILE=路径)" >&2
+    ENTITLEMENTS=""
+  fi
+  RESOLVED_ENT="$(mktemp -t openimg-ent).plist"
+  trap 'rm -f "$RESOLVED_ENT"' EXIT
+  if [ -n "$ENTITLEMENTS" ]; then
+    sed "s/\$(AppIdentifierPrefix)/$TEAM_ID./g" "$ENTITLEMENTS" > "$RESOLVED_ENT"
+    codesign --force --options runtime --timestamp \
+             --sign "$SIGN_IDENTITY" \
+             --entitlements "$RESOLVED_ENT" \
+             --identifier io.openimg.mac "$APP"
+  else
+    codesign --force --options runtime --timestamp \
+             --sign "$SIGN_IDENTITY" \
+             --identifier io.openimg.mac "$APP"
+  fi
 else
   # No --entitlements here on purpose: ad-hoc cannot honour them, and embedding
   # ones that silently do nothing makes the build look configured when it is not.
