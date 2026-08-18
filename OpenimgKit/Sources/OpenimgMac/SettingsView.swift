@@ -562,7 +562,9 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 180)
+                // 高度跟 Metrics.control 走,和同屏的输入框、按钮对齐。分段
+                // 控件不给高度时用的是系统默认值,比这一套里别的控件矮一截。
+                .frame(width: 180, height: Metrics.control)
                 .accessibilityLabel(L.s.settings.wmMode)
 
                 if model.wmKind == .text {
@@ -720,6 +722,7 @@ struct SettingsView: View {
                     Button(L.s.settings.wmGenButton) {
                         Task { await model.wmGenerate() }
                     }
+                    .buttonStyle(BrandButton())
                     .disabled(!model.wmCanGenerate)
                 }
                 // 在途时说清楚"还在跑",否则按钮变灰看起来像是坏了。
