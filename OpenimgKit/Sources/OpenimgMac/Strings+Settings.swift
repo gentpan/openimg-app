@@ -29,7 +29,6 @@ struct SettingsStrings: Sendable {
     let setPassword: String
     let confirmChange: String
     let confirmSet: String
-    let codeValidHint: String
     let codeWillSendHint: String
     let codeSentTo: @Sendable (String) -> String
     let codeField: String
@@ -172,7 +171,6 @@ struct SettingsStrings: Sendable {
     let endpointKind: @Sendable (StorageProfileInput.EndpointKind) -> String
     let location: String
     let locationKeyNote: String
-    let locationEmpty: String
     let kindPlatform: String
     let kindOwnBucket: @Sendable (String) -> String
 
@@ -217,7 +215,6 @@ extension SettingsStrings {
         setPassword: "设置密码",
         confirmChange: "确认修改",
         confirmSet: "确认设置",
-        codeValidHint: "验证码 5 分钟内有效",
         codeWillSendHint: "验证码会发到你的邮箱",
         codeSentTo: { mail in "验证码已发到 \(mail)" },
         codeField: "6 位验证码",
@@ -362,7 +359,6 @@ extension SettingsStrings {
         },
         location: "存储位置",
         locationKeyNote: "新增或修改存储位置需要填写密钥，见下方「在网站上管理」",
-        locationEmpty: "还没有图片，看不出存的位置",
         kindPlatform: "平台存储池",
         kindOwnBucket: { kind in "\(kind) · 自有存储桶" },
 
@@ -402,7 +398,6 @@ extension SettingsStrings {
         setPassword: "Set Password",
         confirmChange: "Change Password",
         confirmSet: "Set Password",
-        codeValidHint: "The code is valid for 5 minutes",
         codeWillSendHint: "We'll email you a code",
         codeSentTo: { mail in "Code sent to \(mail)" },
         codeField: "6-digit code",
@@ -549,7 +544,6 @@ extension SettingsStrings {
         },
         location: "Storage Location",
         locationKeyNote: "Adding or changing a storage location needs access keys — see Manage on the Web below.",
-        locationEmpty: "No images yet, so there's nothing to show",
         kindPlatform: "Platform pool",
         kindOwnBucket: { kind in "\(kind) · Your own bucket" },
 

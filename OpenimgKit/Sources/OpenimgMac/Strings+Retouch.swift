@@ -40,7 +40,6 @@ struct RetouchStrings: Sendable {
     let retouching: String
     let submitted: String
     let takesAWhile: String
-    let landsInGallery: String
 
     // 历史
     let historyTitle: String
@@ -90,7 +89,6 @@ extension RetouchStrings {
         retouching: "修图中…",
         submitted: "已提交，出图约需几十秒",
         takesAWhile: "出图约需几十秒，期间可以去做别的",
-        landsInGallery: "改好的图会作为新图存进图库，原图不会被动到",
 
         historyTitle: "最近修图",
         historyEmpty: "还没有修过图",
@@ -133,7 +131,6 @@ extension RetouchStrings {
         retouching: "Retouching…",
         submitted: "Submitted — this usually takes under a minute",
         takesAWhile: "Usually under a minute — feel free to do something else",
-        landsInGallery: "The result is saved as a new image; your original is left untouched",
 
         historyTitle: "Recent Edits",
         historyEmpty: "Nothing retouched yet",

@@ -36,12 +36,8 @@ struct GenerateStrings: Sendable {
     let submitted: String
     /// 按钮上的悬浮说明:这件事要等。
     let takesAWhile: String
-    /// 额度卡下的脚注:出来的图去哪了。两句分开,因为它们回答的是两个问题
-    /// ——一句共用会让其中一处答非所问。
-    let landsInGallery: String
 
     // 额度
-    let remainingLabel: String
     /// 次数。中文的量词是「次」,英文要分单复数。
     let times: @Sendable (Int) -> String
     let todayLabel: String
@@ -97,9 +93,7 @@ extension GenerateStrings {
         generating: "生成中…",
         submitted: "已提交，出图约需几十秒",
         takesAWhile: "出图约需几十秒，期间可以去做别的",
-        landsInGallery: "生成好的图会自动进图库，和手动上传的一样",
 
-        remainingLabel: "还能生成",
         times: { n in "\(n) 次" },
         todayLabel: "今日已用",
         todayValue: { used, limit in "\(used) / \(limit)" },
@@ -154,9 +148,7 @@ extension GenerateStrings {
         generating: "Generating…",
         submitted: "Submitted — this usually takes under a minute",
         takesAWhile: "Usually under a minute — feel free to do something else",
-        landsInGallery: "Finished images land in your gallery, same as uploaded ones",
 
-        remainingLabel: "Left right now",
         times: { n in n == 1 ? "1 generation" : "\(n) generations" },
         todayLabel: "Used today",
         todayValue: { used, limit in "\(used) / \(limit)" },

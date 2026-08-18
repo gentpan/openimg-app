@@ -281,7 +281,11 @@ extension Font {
         let face = switch weight {
         case .bold, .heavy, .black: "Ubuntu-Bold"
         case .medium, .semibold: "Ubuntu-Medium"
-        default: "Ubuntu"
+        // 常规档的 PostScript 名是 Ubuntu-Regular,不是 Ubuntu(实测三个 ttf 的
+        // name 表确认过)。写错的后果不是崩溃而是**静默回落系统字体**——下面
+        // 那道 NSFont(name:) 守卫会接住它——所以打进包里的 Ubuntu-Regular.ttf
+        // 一直没有任何路径能用到。今天两个调用点都用 .bold,所以看不出来。
+        default: "Ubuntu-Regular"
         }
         return NSFont(name: face, size: size) != nil
             ? .custom(face, size: size)
