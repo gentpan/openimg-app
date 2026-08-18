@@ -245,7 +245,7 @@ extension SettingsStrings {
         picbiNote: "关联 pic.bi 后，AI 生成会多出 4K 清晰度",
         picbiLink: "关联",
         picbiLinkHint: "关联要在网站上完成，会在浏览器里打开",
-        picbiUnlink: "取消关联",
+        picbiUnlink: "在网站解绑",
         picbiRefresh: "我已完成关联",
 
         processing: "图片处理",
@@ -430,7 +430,7 @@ extension SettingsStrings {
         picbiNote: "Connect pic.bi to unlock 4K detail in AI generation",
         picbiLink: "Connect",
         picbiLinkHint: "Connecting happens on the website and opens in your browser",
-        picbiUnlink: "Disconnect",
+        picbiUnlink: "Unlink on the web",
         picbiRefresh: "I've finished connecting",
 
         processing: "Image Processing",
