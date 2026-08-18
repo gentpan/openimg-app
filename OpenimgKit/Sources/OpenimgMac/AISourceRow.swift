@@ -29,12 +29,6 @@ struct AISourceRow: View {
     private var canAdd: Bool { model.aiCanAddSource(slot) }
 
     var body: some View {
-        // 两行:上面是已选的图与两个入口,下面是「最近上传」。
-        //
-        // 快捷条原来挤在同一行的末尾,被限在 240pt 里,十张只露得出四五个,
-        // 其余要横向滚才看得到——而它存在的全部意义就是"一眼看见刚传的那张"。
-        // 单独占一行就有整个面板的宽度。
-        VStack(alignment: .leading, spacing: 8) {
         HStack(alignment: .top, spacing: 10) {
             Text(label)
                 .font(.caption)
@@ -50,13 +44,6 @@ struct AISourceRow: View {
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.tertiary)
                 .padding(.top, collapsed ? 4 : 22)
-        }
-
-        if !collapsed, canAdd, !model.aiRecent(slot).isEmpty {
-            // 左边缩进对齐到标签之后(标签 46 + 间距 10),让它读起来是这一
-            // 组的下半部分,而不是另起一段。
-            recentStrip.padding(.leading, 56)
-        }
         }
         .contentShape(Rectangle())
         // 整行都是拖放目标,不只是那个虚线框:选满四张之后框就没了,而那时
@@ -130,6 +117,12 @@ struct AISourceRow: View {
                 .help(L.s.aiSource.dropHint)
             }
 
+            // 快捷条摆在两个入口右边那片空地上,而不是另起一行:它是这一行的
+            // 延伸——「去选一张 / 传一张 / 就用刚传的这几张」是同一个决定的三
+            // 个选项,拆成两行读起来就成了两件事。那片地方本来也空着。
+            if canAdd, !model.aiRecent(slot).isEmpty {
+                recentStrip
+            }
         }
     }
 
@@ -184,10 +177,8 @@ struct AISourceRow: View {
                 }
                 .padding(.vertical, 1)
             }
-            // 不再限宽:它自己占一行,十张一次看得全,不必横向滚着找。
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // 不限宽:右边那片空地能铺多少铺多少,窗口窄了才横向滚。
         }
-        .padding(.top, 8)
     }
 }
 

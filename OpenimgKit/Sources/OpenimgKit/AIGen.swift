@@ -24,11 +24,18 @@ public struct AIStatus: Decodable, Sendable, Equatable {
     public let remaining: Int
     public let sizes: [String]
     public let resolutions: [String]
+    /// 本地免费额度见底后,还能不能从 pic.bi 扣。
+    public let picbiLinked: Bool
+    /// pic.bi 那边的余额。没关联、或那次查询失败时为 nil——它是锦上添花,
+    /// 不该让对端抖一下就把整个状态接口拖垮。
+    public let picbiCredits: Int?
 
     enum CodingKeys: String, CodingKey {
         case enabled, credits, monthly, remaining, sizes, resolutions
         case usedToday = "used_today"
         case dailyLimit = "daily_limit"
+        case picbiLinked = "picbi_linked"
+        case picbiCredits = "picbi_credits"
     }
 
     /// 关掉时服务器只回 `{"enabled": false}`,别的键根本不存在。逐个
@@ -43,13 +50,21 @@ public struct AIStatus: Decodable, Sendable, Equatable {
         remaining = try c.decodeIfPresent(Int.self, forKey: .remaining) ?? 0
         sizes = try c.decodeIfPresent([String].self, forKey: .sizes) ?? []
         resolutions = try c.decodeIfPresent([String].self, forKey: .resolutions) ?? []
+        picbiLinked = try c.decodeIfPresent(Bool.self, forKey: .picbiLinked) ?? false
+        picbiCredits = try c.decodeIfPresent(Int.self, forKey: .picbiCredits)
     }
 
     /// 「用完了」有两种,解法完全不同:今日用完等明天就有,本月用完得靠签到
     /// 攒。界面必须说清是哪一种,否则用户只会一直点。
     public var dailyExhausted: Bool { dailyLimit > 0 && usedToday >= dailyLimit }
     public var monthlyExhausted: Bool { credits <= 0 }
-    public var canGenerate: Bool { enabled && remaining > 0 }
+    /// pic.bi 那边还剩多少能用。没关联就是 0。
+    public var picbiRemaining: Int { picbiLinked ? (picbiCredits ?? 0) : 0 }
+
+    /// 本地额度见底不等于不能生成:关联了 pic.bi 且那边还有钱时,服务端会
+    /// 自动接管。只看 remaining 会把按钮封死在"pic.bi 正该出场"的那一刻,
+    /// 整条付费路径永远走不到。
+    public var canGenerate: Bool { enabled && (remaining > 0 || picbiRemaining > 0) }
 }
 
 /// 一条生成记录的状态。只有 completed/failed 是终态。

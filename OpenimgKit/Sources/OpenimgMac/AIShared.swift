@@ -6,86 +6,6 @@ import OpenimgKit
 /// 这两页是同一件事的两副面孔:一个额度池、一张历史表、一条轮询。凡是两边
 /// 长得一样的东西都收在这里,免得同一个概念在两个文件里慢慢长成两个样子。
 
-/// 「我还能用几次」那张卡。
-///
-/// 生成页和修图页各摆一份,内容却是同一份:两件事花的是同一个额度池,同一
-/// 次调用就是同一次扣减。所以它不属于任何一页,单独放在这里——各写一份的话,
-/// 两页会在同一件事上慢慢说出两种话。
-///
-/// 位置一律在输入框正下方而不是折进设置里:这是一件**次数有限**的事,用户
-/// 按下按钮之前就该知道自己还剩几次,以及用完之后是等明天还是去签到。
-struct AIQuotaCard: View {
-    @ObservedObject var model: AppModel
-    /// 卡片脚注:出来的图去哪了。两页的答案不同(一张新图 / 一张改过的图),
-    /// 所以这句由调用方给。
-    let footnote: String
-
-    var body: some View {
-        if let s = model.aiStatus {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline, spacing: 22) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(L.s.generate.remainingLabel)
-                            .font(.caption2).foregroundStyle(.tertiary)
-                        Text(L.s.generate.times(s.remaining))
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(s.remaining > 0 ? AnyShapeStyle(Color.brandDisplay)
-                                                             : AnyShapeStyle(Color.orange))
-                    }
-                    stat(L.s.generate.todayLabel, L.s.generate.todayValue(s.usedToday, s.dailyLimit))
-                    stat(L.s.generate.monthlyLabel, L.s.generate.monthlyValue(s.credits, s.monthly))
-                    Spacer(minLength: 12)
-                    exhaustedNote(s)
-                }
-                if s.dailyLimit > 0 {
-                    ProgressBar(
-                        tint: s.remaining > 0 ? .brand : .orange,
-                        value: Double(s.usedToday) / Double(s.dailyLimit)
-                    )
-                    .frame(height: 4)
-                }
-                Text(footnote)
-                    .font(.caption2).foregroundStyle(.tertiary)
-            }
-            .padding(14)
-            .panelSurface(12)
-        }
-    }
-
-    /// 用完了要说清是哪一种用完。
-    ///
-    /// 本月余额先判:余额为零时明天也一样用不了,说「明天再来」是句会让人白
-    /// 等一天的话。今日上限则相反,睡一觉就有。
-    @ViewBuilder
-    private func exhaustedNote(_ s: AIStatus) -> some View {
-        if s.remaining <= 0 {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.circle.fill")
-                    .font(.caption).foregroundStyle(.orange)
-                if s.monthlyExhausted {
-                    Text(L.s.generate.monthlyExhausted)
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button(L.s.generate.goCheckin) { model.section = .overview }
-                        .buttonStyle(LinkButton())
-                        .font(.caption)
-                } else if s.dailyExhausted {
-                    // dailyExhausted 而不是 else:每日上限为 0 的部署里
-                    // remaining 也是 0,那句「今天的 0 次已经用完」是胡话。
-                    Text(L.s.generate.dailyExhausted(s.dailyLimit))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    private func stat(_ key: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(key).font(.caption2).foregroundStyle(.tertiary)
-            Text(value).font(.callout.weight(.medium).monospacedDigit())
-        }
-    }
-}
-
 /// 尺寸与清晰度的取值由服务器给,是字符串而不是本地枚举(不能写死),包一层
 /// 只为满足 PillRow 的 `Hashable & Identifiable`。修图页还借空串表示「跟随
 /// 原图」——那一档在服务器的列表里没有对应项,正因为它的意思是"什么都不指定"。
@@ -125,4 +45,70 @@ func aiAgo(_ date: Date) -> String {
     f.locale = L.locale
     f.unitsStyle = .short
     return f.localizedString(for: date, relativeTo: Date())
+}
+
+/// 额度的紧凑版:一行文字,塞进输入区底排那块空地。
+///
+/// 原来是一整张卡片,为三个数字占掉一行,而输入区底排(清晰度与提交按钮之间)
+/// 本来就空着一大片。同一份信息挪过去,版面少一行,而且它离「生成」按钮更近
+/// ——「还剩几次」正是按下去之前最后要确认的那件事。
+///
+/// 只在还有额度时用这一版。用完了要说清是哪一种用完、该怎么办,那时它值得
+/// 单独一行,见 AIQuotaNotice。
+struct AIQuotaInline: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        if let s = model.aiStatus, s.remaining > 0 {
+            HStack(spacing: 10) {
+                Text(L.s.generate.times(s.remaining))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.brandDisplay)
+                pair(L.s.generate.todayLabel, L.s.generate.todayValue(s.usedToday, s.dailyLimit))
+                pair(L.s.generate.monthlyLabel, L.s.generate.monthlyValue(s.credits, s.monthly))
+            }
+            .lineLimit(1)
+            .fixedSize()
+        }
+    }
+
+    private func pair(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 4) {
+            Text(label).font(.caption2).foregroundStyle(.quaternary)
+            Text(value).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// 额度用完时那一条。
+///
+/// 有额度时完全不占版面——数字已经由紧凑版说清了。用完了才出现,并且说清是
+/// 哪一种用完:本月余额为零时明天也一样用不了,那时说「明天再来」是句会让人
+/// 白等一天的话。
+struct AIQuotaNotice: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        if let s = model.aiStatus, s.remaining <= 0 {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.circle")
+                    .font(.caption).foregroundStyle(.orange)
+                Text(s.monthlyExhausted ? L.s.generate.monthlyExhausted
+                                        : L.s.generate.dailyExhausted(s.dailyLimit))
+                    .font(.caption).foregroundStyle(.secondary)
+                if s.monthlyExhausted {
+                    Button(L.s.generate.goCheckin) { model.section = .overview }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.orange.opacity(0.10))
+            )
+        }
+    }
 }

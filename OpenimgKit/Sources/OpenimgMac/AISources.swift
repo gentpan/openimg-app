@@ -183,8 +183,23 @@ extension AppModel {
 
         aiSourceUploading = true
         defer { aiSourceUploading = false }
+        NSLog("[openimg-ai] 开始上传 %d 张", batch.count)
+        for f in batch {
+            let sz = (try? f.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1
+            NSLog("[openimg-ai]   %@ (%d 字节, 可读=%@)", f.lastPathComponent, sz,
+                  FileManager.default.isReadableFile(atPath: f.path) ? "是" : "否")
+        }
         // 不复制链接:用户正在写提示词,剪贴板里多半是等会儿要粘的东西。
-        let fresh = await upload(batch, copyLink: false)
+        //
+        // 加超时:上传卡住时旋转指示器会一直转下去,用户看不出是慢还是死了。
+        // 两分钟对几兆的图绰绰有余,超过就是出事了,该说话而不是继续转。
+        let fresh = await withTimeout(seconds: 120) { [weak self] in
+            await self?.upload(batch, copyLink: false) ?? []
+        } ?? {
+            NSLog("[openimg-ai] 上传超时(120s),请求没有返回")
+            return []
+        }()
+        NSLog("[openimg-ai] 上传返回 %d 张", fresh.count)
         guard !fresh.isEmpty else {
             // upload 失败时已经播报了具体原因(配额、格式、令牌),这里只补一句
             // 「所以没有图被选中」——否则那一行静静地什么都没变,像是没点到。
@@ -203,5 +218,25 @@ extension AppModel {
         // 「已选中 0 张」这种废话,`upload` 自己那句「已上传」照旧站着。
         let added = picked.count - have.count
         if added > 0 { announce(L.s.aiSource.uploaded(added)) }
+    }
+}
+
+
+/// 给一段异步工作加个上限。超时返回 nil,调用方自己决定怎么说。
+///
+/// 用在上传上:一个转个不停的指示器是最糟的失败方式——用户分不清是网慢还是
+/// 已经死了,只能一直等下去。
+@MainActor
+func withTimeout<T: Sendable>(seconds: Double,
+                              _ work: @escaping @Sendable () async -> T) async -> T? {
+    await withTaskGroup(of: T?.self) { group in
+        group.addTask { await work() }
+        group.addTask {
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            return nil
+        }
+        let first = await group.next() ?? nil
+        group.cancelAll()
+        return first
     }
 }

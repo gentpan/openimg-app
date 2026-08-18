@@ -158,6 +158,12 @@ struct Pill: View {
     let text: String
     var icon: String? = nil
     let active: Bool
+    /// 独立使用时描个边。
+    ///
+    /// PillRow 里的那些不需要:外圈容器本身就把它们框成了一组分段控件。而
+    /// 单独摆一排的(修图预设)没有那层容器,未选中时背景全透明,看起来就是
+    /// 一行普通文字——用户不知道那是可以点的。
+    var bordered = false
     let action: () -> Void
     @State private var hovering = false
 
@@ -176,6 +182,11 @@ struct Pill: View {
                     active ? AnyShapeStyle(Color.brand)
                            : AnyShapeStyle(Color.white.opacity(hovering ? 0.08 : 0))
                 )
+            }
+            .overlay {
+                if bordered, !active {
+                    Capsule().strokeBorder(.white.opacity(hovering ? 0.28 : 0.16), lineWidth: 1)
+                }
             }
             .contentShape(Capsule())
         }

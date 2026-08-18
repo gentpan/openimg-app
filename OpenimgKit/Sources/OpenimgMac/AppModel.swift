@@ -188,6 +188,15 @@ final class AppModel: ObservableObject {
     // 上传前编辑(实现在 EditorSheet.swift)
     @Published var editTarget: EditTarget?
     @Published var editOnDrop = UserDefaults.standard.bool(forKey: "editOnDrop")
+
+    /// 上次启动时 AI 是开着的吗。用来在状态拉回来之前先把侧栏画对,
+    /// 理由见 `aiEnabled`。
+    @Published var aiEnabledRemembered = UserDefaults.standard.bool(forKey: "aiEnabled") {
+        didSet {
+            guard oldValue != aiEnabledRemembered else { return }
+            UserDefaults.standard.set(aiEnabledRemembered, forKey: "aiEnabled")
+        }
+    }
     /// 编辑确认后的渲染进行中:上传按钮转圈并禁用,防双击双传。
     @Published var editSubmitting = false
     /// upload() 的并发调用计数——uploading 只在归零时熄灭。
@@ -569,7 +578,12 @@ final class AppModel: ObservableObject {
         case .generate, .retouch:
             await aiLoadStatus()
             await aiRefresh()
-        case .upload, .editor, .settings:
+        case .settings:
+            quota = try? await client().quota()
+            // 设置页上印着 pic.bi 的关联状态,而关联是在浏览器里做的:⌘R
+            // 是用户回到应用后最顺手的那一下。
+            await refreshAccountLinks()
+        case .upload, .editor:
             quota = try? await client().quota()
         }
     }
@@ -928,10 +942,24 @@ final class AppModel: ObservableObject {
         do {
             try await client().unlink(provider: provider)
             account = try await client().me()
+            // 关联状态决定服务器给不给 4K 那一档,而 AI 状态是登录时问过一次
+            // 就留着的:不重取,生成页会一直摆着一个已经会被拒的清晰度。
+            await aiLoadStatus()
             announce(L.s.errors.unlinked)
         } catch {
             announce(message(error))
         }
+    }
+
+    /// 重新问一次账号与 AI 状态。
+    ///
+    /// pic.bi 的关联在浏览器里完成——那条路要 cookie 会话,这个客户端拿的是
+    /// 令牌,走不了——所以应用这边没有"完成"的回调可听,只能在用户回来时
+    /// (⌘R,或点一下"我已完成关联")重新问服务器。静默失败:这只是刷新。
+    func refreshAccountLinks() async {
+        guard connected, let c = try? client() else { return }
+        if let fresh = try? await c.me() { account = fresh }
+        await aiLoadStatus()
     }
 
     // MARK: - Profile

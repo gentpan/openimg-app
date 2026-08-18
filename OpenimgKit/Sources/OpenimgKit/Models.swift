@@ -181,6 +181,9 @@ public struct Account: Codable, Sendable {
     /// 没有密码的账号(只用 OAuth/Passkey 注册的)界面上说"设置密码"而不是
     /// "修改密码"。旧服务器不返回此字段时按 true 处理,措辞退回保守说法。
     public let hasPassword: Bool?
+    /// 是否关联了 pic.bi 账号——关联的是额度,不是登录方式:这个字段为真
+    /// 不代表能用 pic.bi 登录本站。旧服务器不返回,按"未关联"处理。
+    public let picbiConnected: Bool?
 
     /// What to draw when there is no picture. Prefers the nickname over the
     /// address so a letter the user chose wins over one they did not.
@@ -192,6 +195,7 @@ public struct Account: Codable, Sendable {
         case id, email, name, role
         case avatarURL = "avatar_url"
         case hasPassword = "has_password"
+        case picbiConnected = "picbi_connected"
         case uploadMode = "upload_mode"
         case variantFormat = "variant_format"
         case maxImageWidth = "max_image_width"

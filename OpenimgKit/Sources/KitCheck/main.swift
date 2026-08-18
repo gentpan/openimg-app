@@ -188,9 +188,16 @@ let noAvatar = #"{"id":"1","email":"zoe@b.c","name":"","role":"user"}"#
 if let a = try? dec.decode(Account.self, from: Data(noAvatar.utf8)) {
     check("缺 avatar_url 仍可解析", a.avatarURL == nil)
     check("无昵称时首字母回退到邮箱", a.initial == "Z")
+    // 旧服务器不认识 pic.bi。字段缺失必须落到"未关联",而不是解析失败——
+    // 症状同样会是"登录不上"。
+    check("缺 picbi_connected 时按未关联", (a.picbiConnected ?? false) == false)
 } else {
     check("缺 avatar_url 仍可解析", false)
 }
+
+let picbiLinked = #"{"id":"1","email":"a@b.c","name":"n","role":"user","picbi_connected":true}"#
+check("picbi_connected 解析",
+      (try? dec.decode(Account.self, from: Data(picbiLinked.utf8)))?.picbiConnected == true)
 
 section("Passkey 解析")
 

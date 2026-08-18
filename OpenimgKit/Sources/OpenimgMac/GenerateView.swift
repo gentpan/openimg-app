@@ -19,8 +19,8 @@ struct GenerateView: View {
     var body: some View {
         VStack(spacing: 14) {
             history
-            // 额度卡与修图页共用一份:同一个额度池,不该有两处各自的说法。
-            AIQuotaCard(model: model, footnote: L.s.generate.landsInGallery)
+            // 用完了才出现,平时不占版面——数字已经在输入区底排说清了。
+            AIQuotaNotice(model: model)
             composer
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -54,6 +54,10 @@ struct GenerateView: View {
                 optionRow(L.s.generate.resolutionLabel, options: model.aiResolutions,
                           label: { $0.uppercased() }, selection: resolutionBinding)
                 Spacer(minLength: 12)
+                // 底排本来空着一大片,而「还剩几次」正是按下生成之前最后要
+                // 确认的事——放在按钮边上比放在页面顶部一张卡里更该看见。
+                AIQuotaInline(model: model)
+                Spacer(minLength: 8)
                 Text(L.s.generate.promptCounter(model.aiPromptLength, aiPromptLimit))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(model.aiPromptTooLong ? AnyShapeStyle(Color.orange)
@@ -73,14 +77,32 @@ struct GenerateView: View {
                 Text(L.s.generate.promptPlaceholder)
                     .font(.callout)
                     .foregroundStyle(.tertiary)
-                    .padding(.leading, 5)
+                    .padding(.leading, 9)
+                    .padding(.top, 8)
                     .allowsHitTesting(false)
             }
             TextEditor(text: $model.aiPrompt)
                 .font(.callout)
                 .scrollContentBackground(.hidden)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 4)
                 .frame(height: 76)
         }
+        // 原来没有边框,和面板底色连成一片,看不出哪里可以打字。
+        //
+        // 描边加一层极淡的底,而不是压一块实色:这套界面是半透明叠层,实底
+        // 会在它上面显脏。超长时描边转橙,和右下角那个字数计数说的是同一件
+        // 事——两处一起变,用户不必去数字符。
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(.black.opacity(0.18))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(model.aiPromptTooLong ? Color.orange.opacity(0.75)
+                                        : .white.opacity(0.12),
+                              lineWidth: 1)
+        )
     }
 
     private func optionRow(

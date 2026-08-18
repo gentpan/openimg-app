@@ -14,7 +14,13 @@ extension AppModel {
 
     // MARK: - 派生状态
 
-    var aiEnabled: Bool { aiStatus?.enabled == true }
+    /// AI 开没开。
+    ///
+    /// 状态还没拉回来时用上次启动记住的值,而不是一律当作"没开"。侧栏那两行
+    /// 是导航,不是内容:每次冷启动先少两行、等一次网络往返再补上,看起来像
+    /// 是功能时有时无。记住上次的结果,启动那一刻就是对的,拉回来再纠正——
+    /// 猜错的代价只是短暂多/少一行,而猜对是常态(这个开关几乎不变)。
+    var aiEnabled: Bool { aiStatus?.enabled ?? aiEnabledRemembered }
 
     /// 侧栏该显示哪几行。没配 APIMART_API_KEY 的部署里,「生成」和「修图」
     /// 不是灰的,是不存在的——给一个点不动的入口等于承诺了一件做不到的事。
@@ -83,6 +89,7 @@ extension AppModel {
         // 静默失败:AI 是附加功能,一个坏掉的端点不该在登录成功时弹红条。
         guard let s = try? await c.aiStatus() else { return }
         aiStatus = s
+        aiEnabledRemembered = s.enabled
         // 选择必须落在服务器给的合法值里,否则提交时会被静默改写成默认档,
         // 界面显示的和实际出的图对不上。
         if !s.sizes.isEmpty, !s.sizes.contains(aiSize) { aiSize = s.sizes[0] }

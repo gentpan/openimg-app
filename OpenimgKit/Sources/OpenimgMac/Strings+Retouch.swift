@@ -72,6 +72,12 @@ extension RetouchStrings {
             .init(id: "background", label: "换背景", prompt: RetouchPrompts.background),
             .init(id: "restore", label: "修复老照片", prompt: RetouchPrompts.restore),
             .init(id: "sharpen", label: "提升清晰度", prompt: RetouchPrompts.sharpen),
+            .init(id: "text", label: "去文字", prompt: RetouchPrompts.removeText),
+            .init(id: "whitebg", label: "白底商品图", prompt: RetouchPrompts.whiteBackground),
+            .init(id: "colorize", label: "黑白上色", prompt: RetouchPrompts.colorize),
+            .init(id: "portrait", label: "人像精修", prompt: RetouchPrompts.portrait),
+            .init(id: "cartoon", label: "卡通风格", prompt: RetouchPrompts.cartoon),
+            .init(id: "expand", label: "扩展画面", prompt: RetouchPrompts.expand),
         ],
 
         promptPlaceholder: "说清楚要改哪里，其余保持不变",
@@ -109,6 +115,12 @@ extension RetouchStrings {
             .init(id: "background", label: "Replace Background", prompt: RetouchPrompts.background),
             .init(id: "restore", label: "Restore Old Photo", prompt: RetouchPrompts.restore),
             .init(id: "sharpen", label: "Sharpen", prompt: RetouchPrompts.sharpen),
+            .init(id: "text", label: "Remove Text", prompt: RetouchPrompts.removeText),
+            .init(id: "whitebg", label: "White Background", prompt: RetouchPrompts.whiteBackground),
+            .init(id: "colorize", label: "Colorize", prompt: RetouchPrompts.colorize),
+            .init(id: "portrait", label: "Retouch Portrait", prompt: RetouchPrompts.portrait),
+            .init(id: "cartoon", label: "Illustration", prompt: RetouchPrompts.cartoon),
+            .init(id: "expand", label: "Extend Canvas", prompt: RetouchPrompts.expand),
         ],
 
         promptPlaceholder: "Say what to change — everything else stays as it is",
@@ -141,6 +153,31 @@ extension RetouchStrings {
 /// 只有一份,中英两套文案共用:这些句子是发给上游模型的指令,不是界面文案。
 /// 每一句都以「其余保持不变」收尾——不加这句,模型会顺手把整张图重画一遍。
 enum RetouchPrompts {
+    static let removeText = """
+        Remove all text, captions and subtitles from this image. \
+        Reconstruct what was behind them; keep everything else unchanged.
+        """
+    static let whiteBackground = """
+        Cut out the product and place it on a pure white background, \
+        centered, with soft even lighting and a natural contact shadow.
+        """
+    static let colorize = """
+        Colorize this black and white photo with natural, period-accurate \
+        colors. Keep the original composition and details.
+        """
+    static let portrait = """
+        Retouch this portrait: even out skin tone, remove blemishes, \
+        brighten the eyes. Keep the person clearly recognizable — \
+        do not reshape the face.
+        """
+    static let cartoon = """
+        Redraw this image as a clean flat illustration with bold outlines \
+        and simple shading. Keep the subject and composition recognizable.
+        """
+    static let expand = """
+        Extend this image outward, continuing the scene naturally on all \
+        sides. Keep the existing content untouched.
+        """
     static let watermark = """
         Remove all watermarks, logos and text overlays from this image. \
         Keep everything else exactly unchanged.

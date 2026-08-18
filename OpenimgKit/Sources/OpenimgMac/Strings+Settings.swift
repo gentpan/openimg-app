@@ -51,6 +51,19 @@ struct SettingsStrings: Sendable {
     let passkeyNameField: String
     let addPasskey: String
 
+    // 账号关联
+    /// 与「登录与安全」分开的一张卡片:关联 pic.bi 打通的是额度,不是登录
+    /// 方式——把它并进登录那组会读成"还能用 pic.bi 登录",而那条路不存在。
+    let linkedAccounts: String
+    let linkedAccountsHint: String
+    let picbiLinked: String
+    let picbiLinkedNote: String
+    let picbiNote: String
+    let picbiLink: String
+    let picbiLinkHint: String
+    let picbiUnlink: String
+    let picbiRefresh: String
+
     // 图片处理
     let processing: String
     let mode: String
@@ -189,6 +202,16 @@ extension SettingsStrings {
         addedOn: { date in "添加于 \(date)" },
         passkeyNameField: "名称（如 MacBook Touch ID）",
         addPasskey: "添加 Passkey",
+
+        linkedAccounts: "账号关联",
+        linkedAccountsHint: "两边账号各自独立，关联只是把额度打通",
+        picbiLinked: "已关联",
+        picbiLinkedNote: "AI 生成先用本站的免费次数，用完才扣 pic.bi 的积分",
+        picbiNote: "关联 pic.bi 后，AI 生成会多出 4K 清晰度",
+        picbiLink: "关联",
+        picbiLinkHint: "关联要在网站上完成，会在浏览器里打开",
+        picbiUnlink: "取消关联",
+        picbiRefresh: "我已完成关联",
 
         processing: "图片处理",
         mode: "处理方式",
@@ -338,6 +361,16 @@ extension SettingsStrings {
         addedOn: { date in "Added \(date)" },
         passkeyNameField: "Name (e.g. MacBook Touch ID)",
         addPasskey: "Add Passkey",
+
+        linkedAccounts: "Connected Account",
+        linkedAccountsHint: "The two accounts stay separate — connecting only shares the allowance",
+        picbiLinked: "Connected",
+        picbiLinkedNote: "AI generation uses this site's free runs first, then pic.bi credits",
+        picbiNote: "Connect pic.bi to unlock 4K detail in AI generation",
+        picbiLink: "Connect",
+        picbiLinkHint: "Connecting happens on the website and opens in your browser",
+        picbiUnlink: "Disconnect",
+        picbiRefresh: "I've finished connecting",
 
         processing: "Image Processing",
         mode: "Mode",

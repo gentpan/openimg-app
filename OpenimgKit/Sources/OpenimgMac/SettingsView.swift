@@ -34,6 +34,7 @@ struct SettingsView: View {
                     profileCard
                     appearanceCard
                     securityCard
+                    linkedAccountsCard
                     dangerCard
                 }
                 VStack(spacing: 16) {
@@ -753,6 +754,71 @@ struct SettingsView: View {
                     .disabled(model.busy)
             }
         }
+    }
+
+    /// pic.bi 关联。
+    ///
+    /// 自成一张卡片,而不是塞进「登录与安全」:关联打通的是额度,不是登录
+    /// 方式——pic.bi 没有登录按钮,也不该被读成有。
+    ///
+    /// 关联本身在网站上完成:那条路(`/auth/picbi/link-start`)要 cookie 会话,
+    /// 这个客户端拿的是令牌,`ASWebAuthenticationSession` 又是 ephemeral 的
+    /// (见 OAuthSignIn 里那条注释),两条都走不通。所以这里只把浏览器领到
+    /// 设置页,回来点一下"我已完成关联"重新问服务器。解绑是纯 API,令牌能
+    /// 调(router.go 里 unlink 在 machine 组),就地做完。
+    private var linkedAccountsCard: some View {
+        let linked = model.account?.picbiConnected ?? false
+        return SettingsCard(L.s.settings.linkedAccounts, "link") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(L.s.settings.linkedAccountsHint)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.brand)
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text("pic.bi").font(.callout)
+                            if linked { tag(L.s.settings.picbiLinked) }
+                        }
+                        Text(linked ? L.s.settings.picbiLinkedNote : L.s.settings.picbiNote)
+                            .font(.caption2).foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    if linked {
+                        Button(L.s.settings.picbiUnlink) { Task { await model.unlink("picbi") } }
+                            .buttonStyle(LinkButton()).font(.caption2)
+                    } else {
+                        Button(L.s.settings.picbiLink) { openLinkPage() }
+                            .buttonStyle(QuietButton())
+                    }
+                }
+
+                if !linked {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(L.s.settings.picbiLinkHint)
+                            .font(.caption2).foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        Button(L.s.settings.picbiRefresh) {
+                            Task { await model.refreshAccountLinks() }
+                        }
+                        .buttonStyle(LinkButton()).font(.caption2)
+                    }
+                }
+            }
+        }
+        .disabled(model.busy)
+    }
+
+    /// 设置页而不是 link-start 本身:后者是 cookie-only 的,浏览器里没有会话
+    /// 时回的是一段 401 JSON,而不是登录页。
+    private func openLinkPage() {
+        if let u = URL(string: model.server + "/settings") { NSWorkspace.shared.open(u) }
     }
 
     private var dangerCard: some View {
