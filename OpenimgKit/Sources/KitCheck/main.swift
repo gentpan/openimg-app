@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import ImageIO
 import UniformTypeIdentifiers
 @testable import OpenimgKit
@@ -1440,6 +1441,24 @@ do {
     check("重复保存是覆盖", tokenStore.load(server: fakeServer) == "oimg_replaced")
     check("删除返回 true", tokenStore.delete(server: fakeServer))
     check("删除后读不到", tokenStore.load(server: fakeServer) == nil)
+
+    // 这条钉住的是**决定**,不是结果。
+    //
+    // 上面那几条一直是绿的,却没拦住"每次都要重新登录":KitCheck 是命令行
+    // 二进制,SecItemAdd 返回 errSecMissingEntitlement,自然走文件;而 ad-hoc
+    // 签名的 app 在有些系统版本上**返回成功**,于是成功那一支顺手把兜底文件
+    // 删了,下一个构建换了签名身份就再也读不回来。
+    //
+    // 所以真正要守的是:没有稳定签名身份时,令牌必须落在盘上,而不是落进一个
+    // 重新打包就读不回来的钥匙串。
+    check("命令行环境没有稳定签名身份", !TokenStore.hasStableIdentity)
+    try tokenStore.save("oimg_ondisk", server: fakeServer)
+    let digest = SHA256.hash(data: Data(fakeServer.utf8))
+        .prefix(8).map { String(format: "%02x", $0) }.joined()
+    let backing = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("io.openimg.mac/token-\(digest)")
+    check("无稳定身份时令牌真的落盘", FileManager.default.fileExists(atPath: backing.path))
+    tokenStore.delete(server: fakeServer)
 } catch {
     check("TokenStore 保存不抛错(\(error))", false)
 }

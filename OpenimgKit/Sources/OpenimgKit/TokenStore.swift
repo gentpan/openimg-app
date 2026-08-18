@@ -51,7 +51,33 @@ public struct TokenStore: Sendable {
         return base.appendingPathComponent("io.openimg.mac/token-\(digest)")
     }
 
+    /// 这个构建有没有稳定的签名身份。
+    ///
+    /// 判据是团队标识:ad-hoc 签名没有,而它的代码签名身份**每次重新打包都变**。
+    /// 钥匙串条目按签名身份做访问控制,所以 ad-hoc 构建即使写入成功,下一个
+    /// 构建也读不回来——表现就是"每次打开都要重新登录"。
+    ///
+    /// 原来是按 SecItemAdd 的返回码分流(只有 errSecMissingEntitlement 才落
+    /// 文件),但 ad-hoc 在有些系统版本上会**返回成功**,于是成功那一支顺手把
+    /// 兜底文件删掉,兜底自己把自己废了。按身份判才是这件事的真实条件。
+    public static let hasStableIdentity: Bool = {
+        var code: SecCode?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return false }
+        var info: CFDictionary?
+        guard SecCodeCopySigningInformation(
+            unsafeBitCast(code, to: SecStaticCode.self),
+            SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+            let dict = info as? [String: Any] else { return false }
+        let team = dict[kSecCodeInfoTeamIdentifier as String] as? String
+        return !(team ?? "").isEmpty
+    }()
+
     public func save(_ token: String, server: String) throws {
+        // 没有稳定身份就别碰钥匙串:写进去也读不回来,还会把兜底文件删掉。
+        guard Self.hasStableIdentity else {
+            try saveToFile(token, server: server)
+            return
+        }
         var attrs = query(server: server, dataProtection: true)
         SecItemDelete(attrs as CFDictionary) // upsert; add-then-update races
         attrs[kSecValueData as String] = Data(token.utf8)
@@ -62,6 +88,10 @@ public struct TokenStore: Sendable {
             return
         }
         guard status == errSecMissingEntitlement else { throw KeychainError(status: status) }
+        try saveToFile(token, server: server)
+    }
+
+    private func saveToFile(_ token: String, server: String) throws {
         let url = fileURL(server: server)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)
