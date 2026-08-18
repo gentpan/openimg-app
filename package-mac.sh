@@ -53,6 +53,10 @@ cp "$ROOT/Resources/Fonts/LICENSE-Ubuntu.txt" "$APP/Contents/Resources/"
 # own menu bar like any other. The earlier menu-bar-only build set it, and
 # leaving it in would give a main-window app no way to be brought back once its
 # window is closed.
+# 版本号先取好。heredoc 仍用带引号的形式——去掉引号会让 plist 正文里任何
+# $ 都被当成变量展开,那是给以后埋雷;所以改成写完之后替换占位符。
+APP_VERSION="${APP_VERSION:-0.2.0}"
+APP_BUILD="${APP_BUILD:-1}"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -63,8 +67,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key>                <string>Openimg</string>
   <key>CFBundleDisplayName</key>         <string>Openimg</string>
   <key>CFBundlePackageType</key>         <string>APPL</string>
-  <key>CFBundleShortVersionString</key>  <string>0.1.0</string>
-  <key>CFBundleVersion</key>             <string>1</string>
+  <key>CFBundleShortVersionString</key>  <string>@@APP_VERSION@@</string>
+  <key>CFBundleVersion</key>             <string>@@APP_BUILD@@</string>
   <key>LSMinimumSystemVersion</key>      <string>14.0</string>
   <key>CFBundleIconFile</key>            <string>AppIcon</string>
   <!-- The OAuth callback lands here. Without this the system has nothing to
@@ -80,6 +84,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+sed -i "" -e "s|@@APP_VERSION@@|$APP_VERSION|" -e "s|@@APP_BUILD@@|$APP_BUILD|" "$APP/Contents/Info.plist"
 
 # Signing.
 #

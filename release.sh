@@ -26,7 +26,10 @@ xcrun notarytool history --keychain-profile openimg-notary >/dev/null 2>&1 \
   || { echo "公证凭据 openimg-notary 未配置 —— 见脚本头部前置第 2 步" >&2; exit 1; }
 
 echo "1/5 打包(签名:$IDENTITY)…"
-SIGN_IDENTITY="$IDENTITY" ./package-mac.sh release >/dev/null
+# 版本号从 tag 推出来,不在 plist 里再写一遍——两处各写各的迟早对不上,
+# 而对不上的表现是「关于」里显示的版本和下载文件名不一致,没人会在发布
+# 当天发现。
+SIGN_IDENTITY="$IDENTITY" APP_VERSION="${VERSION#v}" ./package-mac.sh release >/dev/null
 APP="$ROOT/build/Openimg.app"
 
 echo "2/5 压缩并提交公证…"
