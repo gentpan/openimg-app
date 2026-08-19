@@ -35,7 +35,7 @@ struct WeekStrip: View {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 11, weight: .bold))
                                 // Ink, not white: the disc under it is the
-                                // accent green, where white is 1.68:1.
+                                // accent green, where white is 1.27:1.
                                 .foregroundStyle(Color.brandInk)
                         }
                     }
