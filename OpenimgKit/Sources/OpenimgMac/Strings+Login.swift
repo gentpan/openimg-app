@@ -10,7 +10,6 @@ struct LoginStrings: Sendable {
     let serverApply: String
     let serverReset: String
     let serverCurrent: @Sendable (String) -> String
-    let headerPrefix: String
     let tagline: String
 
     let emailPlaceholder: String
@@ -56,7 +55,6 @@ extension LoginStrings {
         serverApply: "使用这个地址",
         serverReset: "改回官方",
         serverCurrent: { s in "服务器：\(s)" },
-        headerPrefix: "登录 ",
         tagline: "图片托管与分发",
         emailPlaceholder: "you@example.com",
         passwordPlaceholder: "密码",
@@ -90,7 +88,6 @@ extension LoginStrings {
         serverApply: "Use this server",
         serverReset: "Back to official",
         serverCurrent: { s in "Server: \(s)" },
-        headerPrefix: "Sign in to ",
         tagline: "Image hosting and delivery",
         emailPlaceholder: "you@example.com",
         passwordPlaceholder: "Password",

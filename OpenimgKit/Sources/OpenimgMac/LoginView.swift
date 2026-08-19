@@ -181,33 +181,14 @@ struct LoginView: View {
 
     private var header: some View {
         VStack(spacing: 9) {
-            // 直接用 app 自己的图标,而不是另画一个符号:换了 icns 两处一起变,
-            // 不会各走各的。图标本身已经是带底色的圆角方块,所以这里不再套一层
-            // 品牌色底——那会变成方块套方块。
+            // 字标是这一页唯一的品牌元素(图标去掉了),所以比原来大一档——
+            // 21pt 是当初配着上面那个 56pt 图标定的,单独站着就偏小了。
             //
-            // 它不跟着品牌色切换(绿/紫),这是有意的:图标是身份,不是主题。
-            if let icon = NSImage(named: NSImage.applicationIconName) {
-                Image(nsImage: icon)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 64, height: 64)
-                    .shadow(color: .black.opacity(0.35), radius: 12, y: 5)
-            } else {
-                // 取不到就退回原来那个符号。登录页没有图标不该是致命的。
-                Image(systemName: "photo.on.rectangle.angled")
-                    .font(.system(size: 27, weight: .light))
-                    .foregroundStyle(Color.brandInk)
-                    .frame(width: 56, height: 56)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.brand))
-                    .shadow(color: Color.brand.opacity(0.5), radius: 14, y: 5)
-            }
-
-            // Ubuntu on the wordmark only — it has no CJK coverage, and letting
-            // it fall through mid-sentence puts two typefaces in one line.
+            // Ubuntu 只用在字标上:它没有中文覆盖,让它在句子中间回落会把两种
+            // 字体并进同一行。
             HStack(spacing: 0) {
-                Text(L.s.login.headerPrefix).font(.title2.weight(.semibold))
-                Text("Open").font(.brand(21, .bold))
-                Text("img").font(.brand(21, .bold)).foregroundStyle(Color.brand)
+                Text("Open").font(.brand(34, .bold))
+                Text("img").font(.brand(34, .bold)).foregroundStyle(Color.brand)
             }
             Text(L.s.login.tagline).font(.caption).foregroundStyle(.secondary)
         }
