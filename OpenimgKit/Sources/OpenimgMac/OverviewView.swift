@@ -12,32 +12,43 @@ import OpenimgKit
 struct OverviewView: View {
     @ObservedObject var model: AppModel
 
+    /// 卡片的一条序列。行怎么切由 CardGrid 按列数算,这里只声明顺序和跨度。
+    ///
+    /// 原来是手分的两列(左三右四)加 980pt 上限,没有断点。后果是两列高度对不
+    /// 上——左列到屏幕中段就结束,右列一直拉到底,左下空出整整 523pt;而窗口拉
+    /// 宽之后左右各留白 236pt(16 吋满屏)没人用。
+    ///
+    /// 分组:先「我还剩多少」(空间、签到),再「东西长什么样」(构成、格式),
+    /// 最后「最近发生了什么」(最近上传、趋势、流水)。
+    private enum CardID: String, Hashable, Sendable {
+        case quota, checkin, composition, format, recent, trend, ledger
+    }
+
+    private var cards: [BoardCard<CardID>] {
+        [
+            BoardCard(.quota),
+            BoardCard(.checkin),
+            BoardCard(.composition),
+            BoardCard(.format),
+            // 唯一真吃宽度的卡:三列档跨两格,缩略图从 4 列变 6 列。
+            BoardCard(.recent, spans: [3: 2]),
+            BoardCard(.trend),
+            // 12 条 × 37pt 单栏 = 514pt,它一个人就是原来那个失衡的全部来源。
+            BoardCard(.ledger, spans: [2: 2, 3: 3]),
+        ]
+    }
+
     var body: some View {
-        ScrollView {
-            // Two hand-assigned columns rather than a LazyVGrid.
-            //
-            // An adaptive grid centres every cell inside its row, and these
-            // cards differ in height by a factor of four — so the row ended up
-            // as five cards floating at five different heights with a hole down
-            // the right. Columns also let related cards sit together instead of
-            // wherever the flow happens to put them.
-            HStack(alignment: .top, spacing: 16) {
-                VStack(spacing: 16) {
-                    quotaCard
-                    compositionCard
-                    formatCard
-                }
-                VStack(spacing: 16) {
-                    recentCard
-                    trendCard
-                    checkinCard
-                    ledgerCard
-                }
+        CardBoard(cards: cards) { id in
+            switch id {
+            case .quota:       quotaCard
+            case .checkin:     checkinCard
+            case .composition: compositionCard
+            case .format:      formatCard
+            case .recent:      recentCard
+            case .trend:       trendCard
+            case .ledger:      ledgerCard
             }
-            .frame(maxWidth: 980)
-            .frame(maxWidth: .infinity)   // centres the block in a wide window
-            .padding(.horizontal, 22)
-            .padding(.bottom, 22)
         }
         .task { await model.loadStats() }
     }
@@ -50,7 +61,7 @@ struct OverviewView: View {
     /// 的那一页数据,不多发一次请求;点一张直接跳到图库。
     @ViewBuilder private var recentCard: some View {
         if !model.images.isEmpty {
-            Card(L.s.overview.recentTitle, "photo.stack") {
+            PanelCard(L.s.overview.recentTitle, "photo.stack") {
                 let shots = Array(model.images.prefix(8))
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4),
                           spacing: 6) {
@@ -81,7 +92,7 @@ struct OverviewView: View {
     @ViewBuilder private var trendCard: some View {
         let days = recentDays
         if days.contains(where: { $0.count > 0 }) {
-            Card(L.s.overview.trendTitle, "chart.bar") {
+            PanelCard(L.s.overview.trendTitle, "chart.bar") {
                 Chart(days, id: \.day) { d in
                     BarMark(
                         x: .value(L.s.overview.trendDay, d.day, unit: .day),
@@ -119,7 +130,7 @@ struct OverviewView: View {
     // MARK: - Quota
 
     private var quotaCard: some View {
-        Card(L.s.overview.quotaTitle, "internaldrive") {
+        PanelCard(L.s.overview.quotaTitle, "internaldrive") {
             if let q = model.quota {
                 let used = q.quotaBytes > 0 ? Double(q.usedBytes) / Double(q.quotaBytes) : 0
                 VStack(alignment: .leading, spacing: 10) {
@@ -163,7 +174,7 @@ struct OverviewView: View {
     // MARK: - Storage composition
 
     private var compositionCard: some View {
-        Card(L.s.overview.compositionTitle, "chart.pie") {
+        PanelCard(L.s.overview.compositionTitle, "chart.pie") {
             if let s = model.summary {
                 // Distinct hues, not four opacities of one. Shades of the same
                 // colour force the reader back to the legend for every slice;
@@ -236,7 +247,7 @@ struct OverviewView: View {
     // MARK: - Formats
 
     private var formatCard: some View {
-        Card(L.s.overview.formatsTitle, "doc.on.doc") {
+        PanelCard(L.s.overview.formatsTitle, "doc.on.doc") {
             if let s = model.summary, !s.byFormat.isEmpty {
                 Chart(Array(s.byFormat.enumerated()), id: \.element.id) { i, f in
                     BarMark(
@@ -264,7 +275,7 @@ struct OverviewView: View {
     // MARK: - Check-in
 
     private var checkinCard: some View {
-        Card(L.s.overview.checkinTitle, "flame.fill") {
+        PanelCard(L.s.overview.checkinTitle, "flame.fill") {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .center, spacing: 12) {
                     Image(systemName: "flame.fill")
@@ -308,7 +319,7 @@ struct OverviewView: View {
     // MARK: - Ledger
 
     private var ledgerCard: some View {
-        Card(L.s.overview.ledgerTitle, "list.bullet.rectangle") {
+        PanelCard(L.s.overview.ledgerTitle, "list.bullet.rectangle") {
             if model.transactions.isEmpty {
                 placeholder
             } else {
@@ -374,27 +385,4 @@ struct OverviewView: View {
 
 // MARK: - Card chrome
 
-private struct Card<Content: View>: View {
-    let title: String
-    let icon: String
-    @ViewBuilder let content: Content
-
-    init(_ title: String, _ icon: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.icon = icon
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-            content
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .panelSurface()
-    }
-}
 

@@ -73,7 +73,7 @@ struct SettingsView: View {
     /// have 401'd. They now sit alongside the other things a token may do to
     /// its own account — see the note in router.go for where that line is.
     private var profileCard: some View {
-        SettingsCard(L.s.settings.profile, "person.crop.circle") {
+        PanelCard(L.s.settings.profile, "person.crop.circle") {
             if let a = model.account {
                 HStack(alignment: .top, spacing: 14) {
                     avatarWell(a)
@@ -246,7 +246,7 @@ struct SettingsView: View {
     /// change it. The numbers come from /api/storage/summary, which the token
     /// can already reach.
     private var locationCard: some View {
-        SettingsCard(L.s.settings.location, "externaldrive.connected.to.line.below") {
+        PanelCard(L.s.settings.location, "externaldrive.connected.to.line.below") {
             VStack(alignment: .leading, spacing: 10) {
                 if !model.storageProfiles.isEmpty {
                     VStack(spacing: 0) {
@@ -299,7 +299,7 @@ struct SettingsView: View {
                 }
                 if let err = p.lastError, !err.isEmpty, !p.isActive {
                     Text(err).font(.caption2).foregroundStyle(.orange).lineLimit(1)
-                } else if let k = kindLabel(p.kind), k != p.name {
+                } else if let k = kindLabel(p), k != p.name {
                     Text(k).font(.caption2).foregroundStyle(.tertiary)
                 }
             }
@@ -366,18 +366,39 @@ struct SettingsView: View {
         }
     }
 
-    private func kindLabel(_ kind: String) -> String? {
-        switch kind {
+    /// 后端发的是 platform / user_r2 / user_s3,不是 s3 / r2。
+    ///
+    /// 原来只认后两个,于是绑了 R2 的用户在这里看到的是原样打印的 `user_r2`
+    /// ——default 分支把没认出来的值直接显示出去了,不报错也不留痕。
+    ///
+    /// 非 R2 的自有桶后端一律记成 user_s3(B2、Spaces、OSS、COS 都在里面),
+    /// 所以再用 endpoint 细分一次,这样界面说的才是用户实际在用的那家。
+    private func kindLabel(_ p: StorageProfile) -> String? {
+        switch p.kind {
         case "platform": L.s.settings.kindPlatform
-        case "s3", "r2": L.s.settings.kindOwnBucket(kind.uppercased())
-        default: kind.isEmpty ? nil : kind
+        case "user_r2": L.s.settings.kindOwnBucket("R2")
+        case "user_s3": L.s.settings.kindOwnBucket(vendorName(p.endpoint))
+        // 位置删了但图还在时后端回 "unknown"。
+        case "unknown", "": nil
+        default: p.kind
+        }
+    }
+
+    private func vendorName(_ endpoint: String) -> String {
+        switch StorageProfileInput.describeEndpoint(endpoint) {
+        case .r2: "R2"
+        case .b2: "B2"
+        case .spaces: "Spaces"
+        case .oss: "OSS"
+        case .cos: "COS"
+        case .s3, .custom, .none: "S3"
         }
     }
 
     /// The same three values the upload page offers. Both write to the account,
     /// so whichever one the user reaches for, the website agrees.
     private var conversionCard: some View {
-        SettingsCard(L.s.settings.processing, "wand.and.stars") {
+        PanelCard(L.s.settings.processing, "wand.and.stars") {
             VStack(alignment: .leading, spacing: 14) {
                 setting(L.s.settings.mode, L.s.settings.modeDetail(model.uploadMode)) {
                     PillRow(items: UploadMode.allCases,
@@ -443,7 +464,7 @@ struct SettingsView: View {
     /// 目录监控自动上传。只增不删:本地删除不动云端,云端删除不回头删本地
     /// ——这是自动上传,不是同步,卡片文案也照这个口径写。
     private var watchCard: some View {
-        SettingsCard(L.s.settings.watchFolders, "folder.badge.plus") {
+        PanelCard(L.s.settings.watchFolders, "folder.badge.plus") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Toggle(isOn: Binding(
@@ -525,7 +546,7 @@ struct SettingsView: View {
     /// 外观。产品固定深色,可切的只有界面语言与品牌色相——两者都与网站
     /// 同一套取值,两端观感一致。
     private var appearanceCard: some View {
-        SettingsCard(L.s.settings.appearance, "paintpalette") {
+        PanelCard(L.s.settings.appearance, "paintpalette") {
             VStack(alignment: .leading, spacing: 14) {
                 pickerRow(L.s.settings.language, L.s.settings.languageHint,
                           items: AppLang.allCases,
@@ -597,7 +618,7 @@ struct SettingsView: View {
     /// 水印:本机合成后上传,不上服务器,所以是应用偏好而非账号偏好。
     /// 编辑器里按需开关;对监控目录可选自动应用。
     private var watermarkCard: some View {
-        SettingsCard(L.s.settings.watermark, "signature") {
+        PanelCard(L.s.settings.watermark, "signature") {
             VStack(alignment: .leading, spacing: 12) {
                 // 模式在最前面:后面每一栏的含义都随它变(输入框还是图片、
                 // 字号还是 logo 宽度),放在下面会让人先填完再发现填错了地方。
@@ -842,7 +863,7 @@ struct SettingsView: View {
     /// this app's web session is ephemeral, so the callback would have nothing
     /// to attach the link to.
     private var securityCard: some View {
-        SettingsCard(L.s.settings.security, "lock.shield") {
+        PanelCard(L.s.settings.security, "lock.shield") {
             VStack(alignment: .leading, spacing: 16) {
                 passwordSection
                 Divider().overlay(Color.white.opacity(0.06))
@@ -974,7 +995,7 @@ struct SettingsView: View {
     /// 有效、会被粘进第三方客户端,不该碰这件事。
     private var linkedAccountsCard: some View {
         let linked = model.account?.picbiConnected ?? false
-        return SettingsCard(L.s.settings.linkedAccounts, "link") {
+        return PanelCard(L.s.settings.linkedAccounts, "link") {
             VStack(alignment: .leading, spacing: 10) {
                 Text(L.s.settings.linkedAccountsHint)
                     .font(.caption).foregroundStyle(.secondary)
@@ -1028,7 +1049,7 @@ struct SettingsView: View {
     }
 
     private var dangerCard: some View {
-        SettingsCard(L.s.settings.device, "laptopcomputer") {
+        PanelCard(L.s.settings.device, "laptopcomputer") {
             HStack(alignment: .top) {
                 Text(L.s.settings.deviceNote)
                     .font(.caption).foregroundStyle(.secondary)
@@ -1078,29 +1099,6 @@ struct SettingsView: View {
     }
 }
 
-/// One card shape for the whole settings page, so sections stop each inventing
-/// their own heading weight and padding.
-struct SettingsCard<Content: View>: View {
-    let title: String
-    let icon: String
-    @ViewBuilder let content: Content
-
-    init(_ title: String, _ icon: String, @ViewBuilder content: () -> Content) {
-        self.title = title; self.icon = icon; self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-            content
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .panelSurface()
-    }
-}
 
 /// 透明度垫底的棋盘格。
 ///

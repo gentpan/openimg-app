@@ -2587,6 +2587,109 @@ check("显式选 WebP 写不了才退 JPEG(用户要的就是有损)",
                            writable: noWebP) == .jpeg)
 
 // MARK: - Result
+// MARK: - 卡片栅格(概览页与设置页的布局求解)
+
+section("栅格断点")
+
+// 可用宽 = 窗口宽 − 224(侧栏) − 8(内容右侧留白) − 44(页面左右各 22)。
+// 下面这些数字都是照着实际窗口尺寸推的,不是造的。
+do {
+    let floorW = BoardFit.solve(width: 624)          // 窗口下限 900
+    check("窗口地板 624 排 2 列", floorW.columns == 2)
+    check("窗口地板列宽 304,与改动前一致", abs(floorW.columnWidth - 304) < 0.01)
+
+    let def = BoardFit.solve(width: 964)             // 默认窗口 1240
+    check("默认窗口 964 仍排 2 列", def.columns == 2)
+    // 这一条是整套改动风险最小的凭据:默认窗口下列宽和改动前一模一样,
+    // 所以卡片内部的排版参数一个都不用重调。
+    check("默认窗口列宽 474,与改动前一模一样", abs(def.columnWidth - 474) < 0.01)
+
+    check("1232 是 2→3 的临界点", BoardFit.solve(width: 1232).columns == 3)
+    check("临界点前一格不翻列", BoardFit.solve(width: 1231).columns == 2)
+    check("16 吋满屏 1452 排 3 列", BoardFit.solve(width: 1452).columns == 3)
+    check("16 吋满屏三列各 473,约等于原来两列的 482",
+          abs(BoardFit.solve(width: 1452).columnWidth - 473.33) < 0.1)
+    check("5K 满屏列宽封顶 560", BoardFit.solve(width: 2284).columnWidth == 560)
+
+    // 两条不变量,扫一遍宽度区间。
+    var widthsOK = true, boundsOK = true
+    for w in stride(from: 300.0, through: 4000.0, by: 7) {
+        let f = BoardFit.solve(width: w)
+        if f.contentWidth > w + 0.001 { widthsOK = false }
+        if f.columns < 2 || f.columns > 3 { boundsOK = false }
+    }
+    check("任意宽度下内容都不溢出", widthsOK)
+    check("任意宽度下列数都夹在 2…3", boundsOK)
+}
+
+section("栅格装箱")
+
+do {
+    // 概览页那条序列。跨度只在需要时声明,其余默认 1 格。
+    enum OV: String, Hashable, Sendable {
+        case quota, ai, checkin, storage, composition, format, recent, trend, ledger
+    }
+    let overview: [BoardCard<OV>] = [
+        BoardCard(.quota), BoardCard(.ai), BoardCard(.checkin),
+        BoardCard(.storage), BoardCard(.composition), BoardCard(.format),
+        BoardCard(.recent, spans: [3: 2]),
+        BoardCard(.trend),
+        BoardCard(.ledger, spans: [2: 2, 3: 3]),
+    ]
+
+    for n in [1, 2, 3] {
+        let flat = CardGrid.rows(overview, columns: n).flatMap { $0.map(\.id) }
+        check("\(n) 列下展平顺序等于声明顺序", flat == overview.map(\.id))
+    }
+
+    var noHoles = true
+    for n in [1, 2, 3] {
+        for row in CardGrid.rows(overview, columns: n) where row.reduce(0, { $0 + $1.span }) != n {
+            noHoles = false
+        }
+    }
+    check("每行跨度之和恒等于列数,永不出洞", noHoles)
+
+    check("单列时每行恰一张",
+          CardGrid.rows(overview, columns: 1).allSatisfy { $0.count == 1 })
+
+    // 想要的跨度超过列数就降级,不重排。
+    check("跨度超过列数时降级而不换位",
+          CardGrid.rows([BoardCard("a", spans: [2: 3]), BoardCard("b")], columns: 2)
+              == [[BoardCell(id: "a", span: 2)], [BoardCell(id: "b", span: 2)]])
+
+    // 行尾余量并给本行最后一张。
+    check("行尾余量并给本行最后一张",
+          CardGrid.rows([BoardCard("a"), BoardCard("b"), BoardCard("c")], columns: 2)
+              == [[BoardCell(id: "a", span: 1), BoardCell(id: "b", span: 1)],
+                  [BoardCell(id: "c", span: 2)]])
+
+    check("概览序列 @2 列排成 5 行",
+          CardGrid.rows(overview, columns: 2).count == 5)
+    check("概览序列 @2 列最后一行是流水独占",
+          CardGrid.rows(overview, columns: 2).last == [BoardCell(id: OV.ledger, span: 2)])
+    check("概览序列 @3 列排成 4 行",
+          CardGrid.rows(overview, columns: 3).count == 4)
+    check("概览序列 @3 列第三行是最近上传跨 2 格 + 趋势",
+          CardGrid.rows(overview, columns: 3)[2]
+              == [BoardCell(id: OV.recent, span: 2), BoardCell(id: OV.trend, span: 1)])
+
+    // 卡片会按条件隐藏(没配 AI、图库空、统计还没回来),任意子集都不能出洞。
+    var subsetsOK = true
+    for mask in 0..<(1 << overview.count) {
+        let subset = overview.enumerated().filter { mask & (1 << $0.offset) != 0 }.map(\.element)
+        guard !subset.isEmpty else { continue }
+        for n in [2, 3] {
+            for row in CardGrid.rows(subset, columns: n) where row.reduce(0, { $0 + $1.span }) != n {
+                subsetsOK = false
+            }
+        }
+    }
+    check("512 个可见子集全部不出洞", subsetsOK)
+
+    check("空序列返回空,不崩", CardGrid.rows([BoardCard<OV>](), columns: 3).isEmpty)
+}
+
 
 print("\n\(checks - failures)/\(checks) 通过")
 if failures > 0 {

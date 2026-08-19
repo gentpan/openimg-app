@@ -859,7 +859,17 @@ final class AppModel: ObservableObject {
     func refreshCurrent() async {
         switch section {
         case .gallery: await load()
-        case .overview: await loadStats()
+        case .overview:
+            // 顺带刷 quota。空间卡那个大字读的是 model.quota,而它只在
+            // connect() 时取过一次——不带上这一句,页面上最重要的数字按 ⌘R
+            // 纹丝不动,而旁边的图表全都变了,看着像刷新坏了。
+            //
+            // 取回来才赋值,失败时留着旧的。别处是 `quota = try? …`(失败即
+            // 清空),那个语义适合首次连接;而这是刷新,一次网络抖动把页面上
+            // 最大的那个数字抹成空白,比显示一个几秒前的旧值糟得多。
+            async let fresh = try? await client().quota()
+            await loadStats()
+            if let q = await fresh { quota = q }
         case .generate, .retouch:
             await aiLoadStatus()
             await aiRefresh()
