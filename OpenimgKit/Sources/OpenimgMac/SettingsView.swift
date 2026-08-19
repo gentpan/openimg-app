@@ -9,6 +9,7 @@ struct SettingsView: View {
     /// the account changed underneath it.
     @State private var draftName: String?
     @State private var editingName = false
+    @State private var nameHovering = false
     @State private var code = ""
     @State private var newPassword = ""
     @State private var pkCode = ""
@@ -149,38 +150,85 @@ struct SettingsView: View {
         }
     }
 
-    /// Commits on Return and on losing focus, and reverts on Escape.
+    /// 平时是一行字,点一下才变成输入框,旁边随之出现「保存」。
     ///
-    /// A save button for one short string is a button people forget to press;
-    /// blur-to-save is what the website does, so the two agree.
+    /// 原来是常驻输入框、失焦即存。改掉是因为那个设计有两处说不通:一是它平
+    /// 时长得就像可编辑的,而这张卡里别的东西都不是,读起来像是有个输入框漏
+    /// 了标签;二是失焦即存意味着点一下别处就把改动写进去了,而用户可能只是
+    /// 点开了旁边的菜单又退回来。
+    ///
+    /// 失焦既不保存也不丢弃,而是留在编辑态。丢弃会吃掉刚打的字;自动保存
+    /// 就把这颗按钮变成了摆设——既然有明确的提交动作,提交就只能由它发生。
+    /// 想放弃按 Esc。
     private func nameField(_ a: Account) -> some View {
-        TextField(L.s.settings.nickname, text: Binding(
-            get: { draftName ?? a.name },
-            set: { draftName = $0 }
-        ))
-            .textFieldStyle(.plain)
-            .font(.title3.weight(.medium))
-            .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(.white.opacity(editingName ? 0.08 : 0))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(.white.opacity(editingName ? 0.14 : 0), lineWidth: 1)
-            )
-            .frame(maxWidth: 260)
-            .onSubmit { commitName() }
-            .onExitCommand { draftName = nil; editingName = false }
-            .focused($nameFocused)
-            .onChange(of: nameFocused) { _, focused in
-                editingName = focused
-                if !focused { commitName() }
+        HStack(spacing: 8) {
+            if editingName {
+                TextField(L.s.settings.nickname, text: Binding(
+                    get: { draftName ?? a.name },
+                    set: { draftName = $0 }
+                ))
+                    .textFieldStyle(.plain)
+                    .font(.title3.weight(.medium))
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(.white.opacity(0.08))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(.white.opacity(0.14), lineWidth: 1)
+                    )
+                    .frame(maxWidth: 260)
+                    .onSubmit { commitName() }
+                    .onExitCommand { cancelName() }
+                    .focused($nameFocused)
+
+                Button(L.s.common.save) { commitName() }
+                    .buttonStyle(BrandButton())
+                    .controlSize(.small)
+                    // 名字没动就不给按:一次什么都不改的写请求,除了让头像和
+                    // 昵称闪一下重新加载之外没有任何作用。
+                    .disabled((draftName ?? a.name) == a.name)
+            } else {
+                Text(a.name.isEmpty ? L.s.settings.nickname : a.name)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(a.name.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(.white.opacity(nameHovering ? 0.06 : 0))
+                    )
+                    // 悬浮才露出的铅笔。常驻的话这行字就永远带着一个图标,
+                    // 而它 99% 的时间只是在显示名字。
+                    .overlay(alignment: .trailing) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                            .opacity(nameHovering ? 1 : 0)
+                            .offset(x: 16)
+                    }
+                    .contentShape(Rectangle())
+                    .onHover { nameHovering = $0 }
+                    .onTapGesture {
+                        editingName = true
+                        // 下一拍再要焦点:这一拍 TextField 还没进视图树。
+                        DispatchQueue.main.async { nameFocused = true }
+                    }
+                    .help(L.s.settings.nicknameEditHint)
             }
-            .animation(.easeOut(duration: 0.12), value: editingName)
+        }
+        .animation(.easeOut(duration: 0.12), value: editingName)
+        .animation(.easeOut(duration: 0.12), value: nameHovering)
+    }
+
+    private func cancelName() {
+        draftName = nil
+        editingName = false
+        nameFocused = false
     }
 
     private func commitName() {
+        defer { editingName = false; nameFocused = false }
         guard let draft = draftName else { return }
         // Dropped before the request, not after: `saveNickname` refreshes the
         // account, and whatever the server decided to store is then what shows

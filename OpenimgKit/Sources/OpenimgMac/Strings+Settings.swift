@@ -9,6 +9,7 @@ struct SettingsStrings: Sendable {
     // 个人资料
     let profile: String
     let nickname: String
+    let nicknameEditHint: String
     let avatarHelp: String
     let change: String
     let remove: String
@@ -194,6 +195,7 @@ extension SettingsStrings {
     static let zh = SettingsStrings(
         profile: "个人资料",
         nickname: "昵称",
+        nicknameEditHint: "点一下改昵称",
         avatarHelp: "点击或拖入图片更换头像",
         change: "更换",
         remove: "移除",
@@ -377,6 +379,7 @@ extension SettingsStrings {
     static let en = SettingsStrings(
         profile: "Profile",
         nickname: "Nickname",
+        nicknameEditHint: "Click to change your nickname",
         avatarHelp: "Click or drop an image to change your avatar",
         change: "Change",
         remove: "Remove",
