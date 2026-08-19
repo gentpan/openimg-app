@@ -2688,6 +2688,30 @@ do {
     check("512 个可见子集全部不出洞", subsetsOK)
 
     check("空序列返回空,不崩", CardGrid.rows([BoardCard<OV>](), columns: 3).isEmpty)
+
+    // 一格之内再切分。按比例切会歪 5.3pt(见 subWidth 的注释),这几条钉住的
+    // 就是"子块拼回去必须严丝合缝对上栅格"。
+    let fit3 = BoardFit.solve(width: 1452)                 // 3 列 × 473.33
+    let cell3 = fit3.columnWidth * 3 + BoardFit.gap * 2    // 跨满一行的格宽
+    check("跨 3 列时切 1 列 == 一个标准列宽",
+          abs(BoardFit.subWidth(of: cell3, span: 3, columns: 1) - fit3.columnWidth) < 0.001)
+    check("跨 3 列时切 2 列 == 两列加一个间隙",
+          abs(BoardFit.subWidth(of: cell3, span: 3, columns: 2)
+              - (fit3.columnWidth * 2 + BoardFit.gap)) < 0.001)
+    check("两块加中间的间隙拼回整格,不多不少",
+          abs(BoardFit.subWidth(of: cell3, span: 3, columns: 1)
+              + BoardFit.gap
+              + BoardFit.subWidth(of: cell3, span: 3, columns: 2) - cell3) < 0.001)
+    // 按比例切会得到什么:留在这里当反例,免得有人再"顺手简化"回去。
+    check("按 1/3 比例切确实会宽出约 5.3pt(所以不能那么算)",
+          abs((cell3 - BoardFit.gap) / 3 - fit3.columnWidth - 5.33) < 0.1)
+
+    let fit2 = BoardFit.solve(width: 964)                  // 默认窗口 2 列 × 474
+    let cell2 = fit2.columnWidth * 2 + BoardFit.gap
+    check("跨 2 列时切 1 列 == 一个标准列宽",
+          abs(BoardFit.subWidth(of: cell2, span: 2, columns: 1) - fit2.columnWidth) < 0.001)
+    check("要的列数超过跨度时夹住,不会算出超过整格的宽",
+          BoardFit.subWidth(of: cell2, span: 2, columns: 5) <= cell2 + 0.001)
 }
 
 

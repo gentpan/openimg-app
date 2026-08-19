@@ -36,6 +36,24 @@ public struct BoardFit: Equatable, Sendable {
     /// 眼睛从左边走到右边会接不上。
     public static let maxColumn: Double = 560
 
+    /// 由「一格的实际宽度」反解出列宽,再按整数列数拼出子块的宽度。
+    ///
+    /// 这一步算错过一次,而且错得不明显:一个跨 3 列的格子宽 3C+32(三列加两
+    /// 个间隙),想在里面切出 1:2 时按比例取 1/3,得到的是 C+5.33 —— 比一个
+    /// 标准列宽 5.3pt。左边那张卡的右边缘于是比它上下的卡多探出去一点,整列
+    /// 看着是歪的,却又说不出差在哪。
+    ///
+    /// - Parameters:
+    ///   - width: 这一格的实际宽度。
+    ///   - span: 这一格占了几列。
+    ///   - columns: 子块要占其中几列。
+    public static func subWidth(of width: Double, span: Int, columns: Int) -> Double {
+        let s = max(1, span)
+        let n = max(1, min(columns, s))
+        let column = max(1, (width - gap * Double(s - 1)) / Double(s))
+        return column * Double(n) + gap * Double(n - 1)
+    }
+
     public static func solve(width: Double, cap: Int = maxColumns) -> BoardFit {
         guard width.isFinite, width > 1 else {
             return BoardFit(columns: minColumns, columnWidth: 1, contentWidth: 1)

@@ -77,7 +77,7 @@ struct OverviewView: View {
     /// 加在「闭包返回的那个视图」上的,只有它的子视图读得到。写在 OverviewView
     /// 自己身上会一直读到默认值 0。
     private var activityRow: some View {
-        SplitRow(ratio: 1.0 / 3.0) { ledgerCard } trailing: { trendCard }
+        SplitRow { ledgerCard } trailing: { trendCard }
     }
 
     // MARK: - 上传趋势
@@ -90,7 +90,7 @@ struct OverviewView: View {
     @ViewBuilder private var trendCard: some View {
         let days = recentDays
         if days.contains(where: { $0.count > 0 }) {
-            PanelCard(L.s.overview.trendTitle, "chart.bar") {
+            PanelCard(L.s.overview.trendTitle, "chart.bar", fills: true) {
                 Chart(days, id: \.day) { d in
                     BarMark(
                         x: .value(L.s.overview.trendDay, d.day, unit: .day),
@@ -100,7 +100,9 @@ struct OverviewView: View {
                     .cornerRadius(2)
                 }
                 .chartYAxis { AxisMarks(position: .leading) }
-                .frame(height: 110)
+                // 吃掉这一行多出来的高度,而不是让图停在 110pt、下面吊一大片
+                // 空白。柱子跟着长高,基线也就贴到了卡片底部。
+                .frame(minHeight: 110, maxHeight: .infinity)
                 Text(L.s.overview.trendNote(days.reduce(0) { $0 + $1.count }))
                     .font(.caption2).foregroundStyle(.tertiary)
             }
@@ -355,22 +357,28 @@ struct OverviewView: View {
 
 // MARK: - Card chrome
 
-/// 一格之内按比例横切成两块。
+/// 一格之内横切成两块,**按列切,不按比例切**。
 ///
-/// 用本格的实际宽度算,不用 `.frame(maxWidth:)` —— 后者只会把空间均分,
-/// 分不出 1:2。
+/// 按比例是错的,而且错得不明显:这一格宽 `3C + 32`(三列加两个间隙),按
+/// 1/3 切出来是 `C + 5.33` —— 比一个标准列宽了 5.3pt,于是左边这张卡的右
+/// 边缘比它上下的卡都多探出去一点,整列看着是歪的。
+///
+/// 反过来从列宽推:先由格宽解出 C,再按整数列数拼回去,边缘就和栅格严丝合缝。
 private struct SplitRow<Leading: View, Trailing: View>: View {
-    let ratio: Double
     @ViewBuilder let leading: Leading
     @ViewBuilder let trailing: Trailing
 
     @Environment(\.cardWidth) private var cardWidth
+    @Environment(\.cardSpan) private var cardSpan
 
     var body: some View {
-        let inner = max(1, cardWidth - BoardFit.gap)
+        // 左边恒占 1 列,右边吃掉其余。三列时正好是 1:2;两列时退成 1:1 ——
+        // 1:2 在两格里拆不成整数列,而对齐比那个比例重要:歪 5pt 是看得见的,
+        // 窄一点不是。
+        let span = max(2, cardSpan)
         HStack(alignment: .top, spacing: BoardFit.gap) {
-            leading.frame(width: inner * ratio)
-            trailing.frame(width: inner * (1 - ratio))
+            leading.frame(width: BoardFit.subWidth(of: cardWidth, span: span, columns: 1))
+            trailing.frame(width: BoardFit.subWidth(of: cardWidth, span: span, columns: span - 1))
         }
     }
 }
@@ -509,6 +517,18 @@ private struct LedgerCard: View {
         }
     }
 
+    /// 当天只印时分,更早才印日期。
+    ///
+    /// 流水多半看的是"刚才那几笔",一水儿的「8月20日」既占地方又没区分度;
+    /// 而隔了天的条目,知道是哪天比知道几点重要。
+    private func stamp(_ d: Date) -> String {
+        let cal = Calendar.current
+        let style: Date.FormatStyle = cal.isDateInToday(d)
+            ? Date.FormatStyle(date: .omitted, time: .shortened)
+            : Date.FormatStyle(date: .abbreviated, time: .omitted)
+        return d.formatted(style.locale(L.locale))
+    }
+
     private func pager(_ icon: String, enabled: Bool, _ act: @escaping () -> Void) -> some View {
         Button(action: act) {
             Image(systemName: icon).font(.system(size: 10, weight: .semibold))
@@ -525,9 +545,13 @@ private struct LedgerCard: View {
                 .foregroundStyle(t.isGrant ? Color.brand : Color.secondary)
                 .font(.caption)
             VStack(alignment: .leading, spacing: 1) {
-                // 不用 QuotaTransaction.label:它写死在共享的 Models.swift 里,
-                // 只有中文一份。
-                Text(L.s.overview.txLabel(t.type)).font(.caption)
+                HStack(spacing: 6) {
+                    // 不用 QuotaTransaction.label:它写死在共享的 Models.swift
+                    // 里,只有中文一份。
+                    Text(L.s.overview.txLabel(t.type)).font(.caption)
+                    Text(stamp(t.createdAt))
+                        .font(.caption2.monospacedDigit()).foregroundStyle(.quaternary)
+                }
                 Text(t.reason)
                     .font(.caption2).foregroundStyle(.tertiary)
                     .lineLimit(1).truncationMode(.middle)

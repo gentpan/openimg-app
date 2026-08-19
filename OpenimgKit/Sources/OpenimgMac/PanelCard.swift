@@ -8,6 +8,11 @@ import SwiftUI
 struct PanelCard<Content: View, Accessory: View>: View {
     let title: String
     let icon: String
+    /// 内容要不要吃掉这一行多出来的高度。
+    ///
+    /// 默认不吃:多数卡是几行字,撑开只会让内部松散。图表是例外——它有一根
+    /// 基线,不撑满就会停在半空,下面吊一大片空白。
+    var fills = false
     /// 标题行右端的东西——翻页、切换之类**属于这张卡**的控件。
     ///
     /// 放在标题行而不是内容底部:它管的是整张卡显示什么,不是内容的一部分。
@@ -15,11 +20,12 @@ struct PanelCard<Content: View, Accessory: View>: View {
     @ViewBuilder let accessory: Accessory
     @ViewBuilder let content: Content
 
-    init(_ title: String, _ icon: String,
+    init(_ title: String, _ icon: String, fills: Bool = false,
          @ViewBuilder accessory: () -> Accessory = { EmptyView() },
          @ViewBuilder content: () -> Content) {
         self.title = title
         self.icon = icon
+        self.fills = fills
         self.accessory = accessory()
         self.content = content()
     }
@@ -35,6 +41,7 @@ struct PanelCard<Content: View, Accessory: View>: View {
             }
             content
         }
+        .frame(maxHeight: fills ? .infinity : nil, alignment: .top)
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         // 撑满这一行的高度,内容顶对齐。
