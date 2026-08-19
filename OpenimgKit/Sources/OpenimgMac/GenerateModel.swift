@@ -135,6 +135,30 @@ extension AppModel {
     /// 拉一次历史。
     ///
     /// `settling` 为真表示这是本会话第一次加载:那一刻所有已完成的记录都
+    /// 删掉一条生成记录,可选连同产出图。
+    ///
+    /// 先请求再改本地。乐观地先移除的话,请求失败那一行要么凭空回来、要么
+    /// 就此消失而服务端还留着——两种都是骗人。删除没有连点场景,一次往返的
+    /// 等待不值得拿正确性去换。
+    func aiDelete(_ gen: AIGeneration, alsoImage: Bool) async {
+        guard let c = try? client() else { return }
+        do {
+            try await c.aiDeleteGeneration(gen.id, alsoImage: alsoImage)
+        } catch {
+            announce(aiMessage(error))
+            return
+        }
+        aiGenerations.removeAll { $0.id == gen.id }
+        if alsoImage, let id = gen.imageID {
+            aiImages[id] = nil
+            // 图库里那张也得跟着消失,否则要等下一次翻页才对得上。
+            images.removeAll { $0.id == id }
+        }
+        announce(L.s.generate.removed)
+        // 删图会退还存储配额,额度面板的数字要跟上。
+        await aiLoadStatus()
+    }
+
     /// 是「新看到的」,但没有一条是**刚刚**完成的,不该为它们弹提示、刷图库。
     func aiRefresh(settling: Bool = false) async {
         guard connected, let c = try? client() else { return }

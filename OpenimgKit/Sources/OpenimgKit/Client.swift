@@ -440,6 +440,17 @@ public struct OpenimgClient: Sendable {
         return try decode(AIGenerationPage.self, data, resp)
     }
 
+    /// 把一条生成记录从列表里删掉,可选连同产出图。
+    ///
+    /// 服务端只是把它标成隐藏而不是真删:那一行是日限的计数单位,真删等于把
+    /// 当天的额度退回来。所以这里"删除"的语义是"不再出现在我的列表里",
+    /// 用掉的次数不会回来——界面上要说清这一点。
+    public func aiDeleteGeneration(_ id: String, alsoImage: Bool) async throws {
+        let path = "api/ai/generations/\(id)" + (alsoImage ? "?image=1" : "")
+        let (data, resp) = try await session.data(for: request("DELETE", path))
+        _ = try decode(OK.self, data, resp)
+    }
+
     /// 递交一次生成。立刻返回,不等图——回来的记录 status 是 pending,
     /// 之后靠 `aiGenerations()` 轮出终态。
     public func aiGenerate(prompt: String, size: String, resolution: String) async throws -> AIGeneration {

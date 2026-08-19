@@ -206,9 +206,34 @@ private struct GenerationRow: View {
     @ObservedObject var model: AppModel
     let gen: AIGeneration
 
+    @State private var confirmingDelete = false
+
     private var image: RemoteImage? { gen.imageID.flatMap { model.aiImages[$0] } }
 
     var body: some View {
+        row
+            // 弹在整个窗口上而不是这一行里:行只有 70pt 高,对话框放进去会被
+            // 裁掉。overlay 挂在最外层由 GenerateView 那边的 ZStack 承载。
+            .overlay {
+                if confirmingDelete {
+                    ConfirmDialog(
+                        title: L.s.generate.removeTitle,
+                        message: L.s.generate.removeMessage,
+                        confirmTitle: L.s.generate.removeConfirm,
+                        cancelTitle: L.s.common.cancel,
+                        // 没有产出图就不给这个勾选项——勾了也没有东西可删。
+                        toggleTitle: image != nil ? L.s.generate.removeAlsoImage : nil,
+                        onConfirm: { alsoImage in
+                            confirmingDelete = false
+                            Task { await model.aiDelete(gen, alsoImage: alsoImage) }
+                        },
+                        onCancel: { confirmingDelete = false })
+                }
+            }
+            .animation(.easeOut(duration: 0.15), value: confirmingDelete)
+    }
+
+    private var row: some View {
         HStack(spacing: 11) {
             preview
                 .frame(width: 54, height: 54)
@@ -289,6 +314,13 @@ private struct GenerationRow: View {
                 ToolTile(icon: "photo.on.rectangle", help: L.s.generate.viewInGallery) {
                     model.section = .gallery
                     model.detail = img
+                }
+            }
+            // 还在跑的不给删:额度已经扣了、上游可能还在出图,让它从界面上消
+            // 失就等于让一笔未结的账消失,用户既看不到进度也看不到退款。
+            if gen.status.isTerminal {
+                ToolTile(icon: "trash", help: L.s.generate.removeTitle) {
+                    confirmingDelete = true
                 }
             }
         }

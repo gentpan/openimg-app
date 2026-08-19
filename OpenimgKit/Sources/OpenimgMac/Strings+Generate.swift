@@ -62,6 +62,11 @@ struct GenerateStrings: Sendable {
     let inLibrary: String
     let viewInGallery: String
     let usePrompt: String
+    let removeTitle: String
+    let removeMessage: String
+    let removeAlsoImage: String
+    let removeConfirm: String
+    let removed: String
     let doneToast: String
     let failedToast: @Sendable (String) -> String
 
@@ -119,6 +124,11 @@ extension GenerateStrings {
         inLibrary: "已存入图库",
         viewInGallery: "在图库里查看",
         usePrompt: "用这句再生成",
+        removeTitle: "删除这条记录？",
+        removeMessage: "记录会从列表里消失。已经用掉的次数不会退回来。",
+        removeAlsoImage: "同时删除生成的图片",
+        removeConfirm: "删除",
+        removed: "已删除",
         doneToast: "生成完成，已存入图库",
         failedToast: { reason in "生成失败：\(reason)" },
 
@@ -174,6 +184,11 @@ extension GenerateStrings {
         inLibrary: "In your gallery",
         viewInGallery: "View in Gallery",
         usePrompt: "Reuse This Prompt",
+        removeTitle: "Delete this record?",
+        removeMessage: "It disappears from the list. The generations you have already used are not returned.",
+        removeAlsoImage: "Also delete the generated image",
+        removeConfirm: "Delete",
+        removed: "Deleted",
         doneToast: "Generated — saved to your gallery",
         failedToast: { reason in "Generation failed: \(reason)" },
 

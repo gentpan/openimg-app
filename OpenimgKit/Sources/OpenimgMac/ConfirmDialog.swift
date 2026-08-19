@@ -12,8 +12,16 @@ struct ConfirmDialog: View {
     /// 破坏性操作用加深的红,其余用品牌色。
     var destructive = true
     let cancelTitle: String
-    let onConfirm: () -> Void
+    /// 可选的附加勾选项。给出标题就多一行复选框,确认时把它的值交回去。
+    ///
+    /// 做成对话框自己的 @State 而不是外部 Binding:它的生命周期就是这次对话
+    /// 的生命周期,交给外面存反而要记得在每次弹出前清掉——忘一次,用户上次
+    /// 勾的「连图一起删」就会在下一次对话里默认选中。
+    var toggleTitle: String? = nil
+    let onConfirm: (Bool) -> Void
     let onCancel: () -> Void
+
+    @State private var toggleOn = false
 
     var body: some View {
         ZStack {
@@ -30,16 +38,22 @@ struct ConfirmDialog: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
 
+                if let toggleTitle {
+                    Toggle(isOn: $toggleOn) { Text(toggleTitle).font(.callout) }
+                        .toggleStyle(.checkbox)
+                        .padding(.top, 10)
+                }
+
                 HStack(spacing: 10) {
                     Button(cancelTitle, action: onCancel)
                         .buttonStyle(QuietButton())
                         .keyboardShortcut(.cancelAction)
                     if destructive {
-                        Button(confirmTitle, action: onConfirm)
+                        Button(confirmTitle) { onConfirm(toggleOn) }
                             .buttonStyle(SolidDangerButton())
                             .keyboardShortcut(.defaultAction)
                     } else {
-                        Button(confirmTitle, action: onConfirm)
+                        Button(confirmTitle) { onConfirm(toggleOn) }
                             .buttonStyle(BrandButton())
                             .keyboardShortcut(.defaultAction)
                     }
