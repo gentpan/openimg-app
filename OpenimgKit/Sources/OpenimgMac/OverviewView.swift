@@ -317,35 +317,7 @@ struct OverviewView: View {
     // MARK: - Ledger
 
     private var ledgerCard: some View {
-        PanelCard(L.s.overview.ledgerTitle, "list.bullet.rectangle") {
-            if model.transactions.isEmpty {
-                placeholder
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(model.transactions.prefix(12)) { t in
-                        HStack(spacing: 10) {
-                            Image(systemName: t.isGrant ? "plus.circle.fill" : "minus.circle.fill")
-                                .foregroundStyle(t.isGrant ? Color.brand : Color.secondary)
-                                .font(.caption)
-                            VStack(alignment: .leading, spacing: 1) {
-                                // 不用 QuotaTransaction.label:它写死在共享的
-                                // Models.swift 里,只有中文一份。
-                                Text(L.s.overview.txLabel(t.type)).font(.caption)
-                                Text(t.reason)
-                                    .font(.caption2).foregroundStyle(.tertiary)
-                                    .lineLimit(1).truncationMode(.middle)
-                            }
-                            Spacer()
-                            Text("\(t.isGrant ? "+" : "−")\(model.bytes(t.bytes))")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(t.isGrant ? Color.brand : .secondary)
-                        }
-                        .padding(.vertical, 5)
-                        if t.id != model.transactions.prefix(12).last?.id { Divider() }
-                    }
-                }
-            }
-        }
+        LedgerCard(model: model)
     }
 
     // MARK: - Bits
@@ -479,5 +451,105 @@ private struct RecentStrip: View {
                     .transition(.opacity)
             }
         }
+    }
+}
+
+/// 空间流水,一页 5 条,翻页在标题右侧。
+///
+/// 分页是纯本地的:`model.transactions` 一次拉 50 条,翻页只是换个切片,
+/// 不发请求也没有等待——所以两颗按钮点下去是即时的。
+///
+/// 一页 5 条而不是一屏铺满:原来一次画 12 条、单栏 514pt,它一个人就是概览
+/// 页两列失衡的全部来源。翻页比截断好在什么都没丢。
+private struct LedgerCard: View {
+    @ObservedObject var model: AppModel
+    @State private var page = 0
+
+    private static let perPage = 5
+
+    private var pageCount: Int {
+        max(1, Int(ceil(Double(model.transactions.count) / Double(Self.perPage))))
+    }
+
+    /// 夹一道:流水会被刷新替换掉(签到、删图都会让它变短),停在第 4 页时
+    /// 数据缩到 8 条,不夹就会显示一页空白。
+    private var clamped: Int { min(page, pageCount - 1) }
+
+    private var slice: ArraySlice<QuotaTransaction> {
+        let start = clamped * Self.perPage
+        guard start < model.transactions.count else { return [] }
+        return model.transactions[start..<min(start + Self.perPage, model.transactions.count)]
+    }
+
+    var body: some View {
+        PanelCard(L.s.overview.ledgerTitle, "list.bullet.rectangle") {
+            if model.transactions.count > Self.perPage {
+                HStack(spacing: 6) {
+                    pager("chevron.left", enabled: clamped > 0) { page = clamped - 1 }
+                    Text("\(clamped + 1)/\(pageCount)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                    pager("chevron.right", enabled: clamped < pageCount - 1) { page = clamped + 1 }
+                }
+            }
+        } content: {
+            if model.transactions.isEmpty {
+                LedgerPlaceholder(model: model)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(slice) { t in
+                        row(t)
+                        if t.id != slice.last?.id { Divider() }
+                    }
+                }
+                // 末页不足 5 条时不让卡片缩一截:高度跟着内容变,翻到最后一页
+                // 整张卡会往上跳,而旁边那张图表没动——看着像页面自己抖了一下。
+                .frame(minHeight: Double(Self.perPage) * 37, alignment: .top)
+            }
+        }
+    }
+
+    private func pager(_ icon: String, enabled: Bool, _ act: @escaping () -> Void) -> some View {
+        Button(action: act) {
+            Image(systemName: icon).font(.system(size: 10, weight: .semibold))
+                .frame(width: 18, height: 18)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(enabled ? AnyShapeStyle(Color.brand) : AnyShapeStyle(.quaternary))
+        .disabled(!enabled)
+    }
+
+    private func row(_ t: QuotaTransaction) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: t.isGrant ? "plus.circle.fill" : "minus.circle.fill")
+                .foregroundStyle(t.isGrant ? Color.brand : Color.secondary)
+                .font(.caption)
+            VStack(alignment: .leading, spacing: 1) {
+                // 不用 QuotaTransaction.label:它写死在共享的 Models.swift 里,
+                // 只有中文一份。
+                Text(L.s.overview.txLabel(t.type)).font(.caption)
+                Text(t.reason)
+                    .font(.caption2).foregroundStyle(.tertiary)
+                    .lineLimit(1).truncationMode(.middle)
+            }
+            Spacer()
+            Text("\(t.isGrant ? "+" : "−")\(model.bytes(t.bytes))")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(t.isGrant ? Color.brand : .secondary)
+        }
+        .padding(.vertical, 5)
+    }
+}
+
+private struct LedgerPlaceholder: View {
+    @ObservedObject var model: AppModel
+    var body: some View {
+        HStack {
+            Spacer()
+            if model.statsLoading { ProgressView().controlSize(.small) }
+            else { Text(L.s.overview.emptyState).font(.caption).foregroundStyle(.tertiary) }
+            Spacer()
+        }
+        .frame(height: 90)
     }
 }

@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var nameHovering = false
     @State private var code = ""
     @State private var newPassword = ""
+    @State private var pkExpanded = false
     @State private var pkCode = ""
     @State private var pkName = ""
     @State private var newPassword2 = ""
@@ -21,43 +22,52 @@ struct SettingsView: View {
     @State private var avatarDropping = false
     @FocusState private var nameFocused: Bool
 
+    /// 卡片顺序按「多久改一次 × 归属谁」排,不是按堆得整齐排。
+    ///
+    /// 前四张是账号与这台机器(一年动几次),后四张是图片的一条链路:怎么处理
+    /// → 加什么水印 → 从哪进来 → 存到哪儿。
+    ///
+    /// 原来是手分的两列(左五右四)。左列 938、右列 1213,差了 275——而且两张
+    /// 最高的卡(图片处理、水印)都在右列且一个叠一个,右列因此单方面超长。把
+    /// 它们排进同一行,失衡就消失了。
+    private enum CardID: String, Hashable, Sendable {
+        case profile, linked, security, appearance
+        case conversion, watermark, watch, location
+    }
+
+    private var cards: [BoardCard<CardID>] {
+        [
+            BoardCard(.profile),
+            BoardCard(.linked),
+            BoardCard(.security),
+            BoardCard(.appearance),
+            // 这两张最高。放同一行,谁也不再单方面把一列拉长。
+            BoardCard(.conversion),
+            BoardCard(.watermark),
+            BoardCard(.watch),
+            // 每行六段(名字/徽章/类型/字节/张数/菜单),横着铺最省高度。
+            BoardCard(.location, spans: [3: 3]),
+        ]
+    }
+
     var body: some View {
-        ScrollView {
-            // Two columns, matching the overview page.
-            //
-            // Six cards in one 560pt column inside a 1240pt window made the
-            // page twice as long as it needed to be while leaving a third of
-            // the width empty on either side. Split by what the cards are
-            // about: who you are and how you get in on the left, what happens
-            // to your images and where they go on the right.
-            HStack(alignment: .top, spacing: 16) {
-                VStack(spacing: 16) {
-                    profileCard
-                    appearanceCard
-                    securityCard
-                    linkedAccountsCard
-                    dangerCard
-                }
-                VStack(spacing: 16) {
-                    conversionCard
-                    watchCard
-                    watermarkCard
-                    locationCard
-                }
+        CardBoard(cards: cards) { id in
+            switch id {
+            case .profile:    profileCard
+            case .linked:     linkedAccountsCard
+            case .security:   securityCard
+            case .appearance: appearanceCard
+            case .conversion: conversionCard
+            case .watermark:  watermarkCard
+            case .watch:      watchCard
+            case .location:   locationCard
             }
-            .frame(maxWidth: 980)
-            .frame(maxWidth: .infinity)   // centres the block in a wide window
-            .padding(.horizontal, 22)
-            .padding(.bottom, 22)
         }
-        .frame(maxWidth: .infinity)
         .task(id: model.account?.id) { await model.loadStats() }
         .sheet(item: $sheet) { which in
             switch which {
             case .password:
                 PasswordSheet(model: model) { sheet = nil }
-            case .passkey:
-                PasskeySheet(model: model) { sheet = nil }
             case .storage(let profile):
                 StorageProfileForm(model: model, editing: profile) { sheet = nil }
             }
@@ -543,10 +553,13 @@ struct SettingsView: View {
         }
     }
 
-    /// 外观。产品固定深色,可切的只有界面语言与品牌色相——两者都与网站
-    /// 同一套取值,两端观感一致。
+    /// 应用与设备。
+    ///
+    /// 原来是两张卡:「外观」(两个选择器)和「这台设备」(两颗按钮)。合并的
+    /// 理由不是凑高度——是两张各自都不够一张卡的分量,合起来四个控件才够。
+    /// 它们说的也是同一件事:这台机器上的 Openimg 是什么样、以及怎么离开它。
     private var appearanceCard: some View {
-        PanelCard(L.s.settings.appearance, "paintpalette") {
+        PanelCard(L.s.settings.appAndDevice, "laptopcomputer") {
             VStack(alignment: .leading, spacing: 14) {
                 pickerRow(L.s.settings.language, L.s.settings.languageHint,
                           items: AppLang.allCases,
@@ -569,6 +582,23 @@ struct SettingsView: View {
                             .frame(width: 13, height: 13)
                             .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.8))
                         Text(L.s.settings.tintName(tint)).font(.callout)
+                    }
+                }
+
+                Divider().overlay(Color.white.opacity(0.06))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(L.s.settings.deviceNote)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        Button(L.s.settings.signOut) { model.signOut() }
+                            .buttonStyle(DangerButton())
+                        Button(L.s.settings.openWebsite) {
+                            if let u = URL(string: model.server) { NSWorkspace.shared.open(u) }
+                        }
+                        .buttonStyle(QuietButton())
+                        Spacer(minLength: 0)
                     }
                 }
             }
@@ -962,14 +992,34 @@ struct SettingsView: View {
                     .buttonStyle(QuietButton())
                     .disabled(model.pkCodeCooldown > 0 || model.busy)
 
-                    Button(L.s.settings.cancel) { model.passkeyCodeSent = false; pkCode = ""; pkName = "" }
+                    Button(L.s.settings.cancel) {
+                        model.passkeyCodeSent = false; pkCode = ""; pkName = ""; pkExpanded = false
+                    }
+                        .buttonStyle(LinkButton()).font(.caption)
+                }
+            } else if pkExpanded {
+                // 展开了但还没发信:发不发由人按。
+                Text(L.s.settings.codeWillSendHint)
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Button(model.pkCodeCooldown > 0
+                           ? L.s.settings.resendIn(model.pkCodeCooldown) : L.s.settings.sendCode) {
+                        Task { await model.sendCode(.passkey) }
+                    }
+                    .buttonStyle(BrandButton())
+                    .disabled(model.pkCodeCooldown > 0 || model.busy)
+
+                    Button(L.s.settings.cancel) { pkExpanded = false }
                         .buttonStyle(LinkButton()).font(.caption)
                 }
             } else {
                 // 与改密码同一道二次因子:验证码先行,泄露的令牌不能给
                 // 账号加登录后门。ad-hoc 构建里系统仪式会被拒,报错文案
                 // 会解释并指去网站。
-                Button(L.s.settings.addPasskey) { Task { await model.sendCode(.passkey) } }
+                //
+                // 点它只展开表单,不发信。原来是直接发——于是误点一次就烧掉
+                // 一封受频率限制的邮件,而用户此刻可能只是想看看这里有什么。
+                Button(L.s.settings.addPasskey) { pkExpanded = true }
                     .buttonStyle(QuietButton())
                     .disabled(model.busy)
             }
@@ -1048,26 +1098,6 @@ struct SettingsView: View {
         if let u = URL(string: model.server + "/settings") { NSWorkspace.shared.open(u) }
     }
 
-    private var dangerCard: some View {
-        PanelCard(L.s.settings.device, "laptopcomputer") {
-            HStack(alignment: .top) {
-                Text(L.s.settings.deviceNote)
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 12)
-                Button(L.s.settings.signOut) { model.signOut() }
-                    .buttonStyle(DangerButton())
-            }
-            HStack {
-                Spacer()
-                Button(L.s.settings.openWebsite) {
-                    if let u = URL(string: model.server) { NSWorkspace.shared.open(u) }
-                }
-                .buttonStyle(QuietButton())
-            }
-            .padding(.top, 4)
-        }
-    }
 
     // MARK: - Bits
 

@@ -5,22 +5,34 @@ import SwiftUI
 /// 原来是两个:`OverviewView` 里的 `Card` 和 `SettingsView` 里的 `SettingsCard`,
 /// 结构逐字相同。合并的直接理由是下面那行 `maxHeight` ——它要是分散在两处,
 /// 以后改一处忘一处;而这一行放错位置,整套等高布局就落空。
-struct PanelCard<Content: View>: View {
+struct PanelCard<Content: View, Accessory: View>: View {
     let title: String
     let icon: String
+    /// 标题行右端的东西——翻页、切换之类**属于这张卡**的控件。
+    ///
+    /// 放在标题行而不是内容底部:它管的是整张卡显示什么,不是内容的一部分。
+    /// 摆在下面会读成"列表的最后一项"。
+    @ViewBuilder let accessory: Accessory
     @ViewBuilder let content: Content
 
-    init(_ title: String, _ icon: String, @ViewBuilder content: () -> Content) {
+    init(_ title: String, _ icon: String,
+         @ViewBuilder accessory: () -> Accessory = { EmptyView() },
+         @ViewBuilder content: () -> Content) {
         self.title = title
         self.icon = icon
+        self.accessory = accessory()
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Label(title, systemImage: icon)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                accessory
+            }
             content
         }
         .padding(16)

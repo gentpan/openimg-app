@@ -16,6 +16,7 @@ struct SettingsStrings: Sendable {
 
     // 外观
     let appearance: String
+    let appAndDevice: String
     let language: String
     let languageHint: String
     let brandColor: String
@@ -39,6 +40,7 @@ struct SettingsStrings: Sendable {
     let passwordTooShort: String
     let passwordMismatch: String
     let resendIn: @Sendable (Int) -> String
+    let sendCode: String
     let resendCode: String
     let cancel: String
     let delete: String
@@ -201,6 +203,7 @@ extension SettingsStrings {
         remove: "移除",
 
         appearance: "外观",
+        appAndDevice: "应用与设备",
         language: "界面语言",
         languageHint: "切换后立即生效",
         brandColor: "品牌色",
@@ -226,6 +229,7 @@ extension SettingsStrings {
         passwordTooShort: "密码至少 8 位",
         passwordMismatch: "两次输入不一致",
         resendIn: { s in "重发 (\(s)s)" },
+        sendCode: "发送验证码",
         resendCode: "重发验证码",
         cancel: "取消",
         delete: "删除",
@@ -385,6 +389,7 @@ extension SettingsStrings {
         remove: "Remove",
 
         appearance: "Appearance",
+        appAndDevice: "App & Device",
         language: "Language",
         languageHint: "Applies immediately",
         brandColor: "Brand color",
@@ -410,6 +415,7 @@ extension SettingsStrings {
         passwordTooShort: "Password must be at least 8 characters",
         passwordMismatch: "The two passwords don't match",
         resendIn: { s in "Resend (\(s)s)" },
+        sendCode: "Send Code",
         resendCode: "Resend Code",
         cancel: "Cancel",
         delete: "Delete",
