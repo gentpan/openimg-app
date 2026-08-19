@@ -44,6 +44,9 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Openimg"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+# 紫色主题那张。Info.plist 只认 AppIcon(绿),紫的是运行时用
+# NSApp.applicationIconImage 换上去的,所以它只需要在 Resources 里能被找到。
+cp "$ROOT/Resources/AppIcon-Violet.icns" "$APP/Contents/Resources/AppIcon-Violet.icns"
 # Ubuntu, registered at launch by BrandFont. Flat in Resources because
 # Bundle.main.url(forResource:) does not search subdirectories.
 cp "$ROOT"/Resources/Fonts/*.ttf "$APP/Contents/Resources/"

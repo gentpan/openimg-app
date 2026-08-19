@@ -94,6 +94,7 @@ final class AppModel: ObservableObject {
         didSet {
             BrandTint.current = brandTint
             UserDefaults.standard.set(brandTint.rawValue, forKey: "brandTint")
+            brandTint.applyAppIcon()
         }
     }
 

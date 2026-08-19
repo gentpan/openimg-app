@@ -2,9 +2,25 @@ import SwiftUI
 import AppKit
 import OpenimgKit
 
+/// 只为了拿到 applicationDidFinishLaunching 这一个时机。
+///
+/// 图标要在启动时就摆正:UserDefaults 里存着紫,但 bundle 里的图标是绿的,
+/// 不主动设一次就得等用户去设置里切一下才对得上。
+///
+/// 不能放在 `App.init()` 里——那时 NSApp 还没建出来,而它是隐式解包可选,
+/// 一访问就 trap(EXC_BREAKPOINT,栈停在 applyAppIcon)。
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        BrandTint.current.applyAppIcon()
+    }
+}
+
 @main
 struct OpenimgMacApp: App {
     @StateObject private var model = AppModel.shared
+
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     init() { BrandFont.register() }
 

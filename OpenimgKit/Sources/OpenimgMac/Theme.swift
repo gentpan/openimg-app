@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// One scale, and one rule about what goes on it.
 ///
@@ -57,6 +58,19 @@ enum BrandTint: String, CaseIterable, Sendable {
         }
     }
 
+    /// 这个色相对应的 Dock 图标资源名,nil 表示用 bundle 里的默认图标。
+    ///
+    /// 只换 Dock 和 ⌘Tab 里那张图。Finder、启动台、以及应用没在运行时
+    /// Dock 上的那张,都还是 bundle 里的绿版——`.app` 是签过名的,运行时
+    /// 改自己的 Resources 会让签名失效,系统直接拒绝启动。想让那些地方也
+    /// 变色只能出两个独立的 .app,那是另一件事。
+    var iconResource: String? {
+        switch self {
+        case .green: nil          // = bundle 的 AppIcon,不用替
+        case .violet: "AppIcon-Violet"
+        }
+    }
+
     /// 当前色相。做成静态量而不是 Environment:`Color.brand` 在 55 处被
     /// 直接引用(含 ButtonStyle 这类拿不到 Environment 的地方),改成环境值
     /// 要动全部调用点。AppModel 改它时会同时发布变更,观察 model 的视图
@@ -64,6 +78,27 @@ enum BrandTint: String, CaseIterable, Sendable {
     nonisolated(unsafe) static var current: BrandTint = {
         BrandTint(rawValue: UserDefaults.standard.string(forKey: "brandTint") ?? "") ?? .green
     }()
+}
+
+extension BrandTint {
+    /// 把 Dock 图标换成当前色相那张。
+    ///
+    /// 启动时也要调一次:UserDefaults 里存着紫,但 bundle 的图标是绿的,
+    /// 不主动设一次的话要等用户去设置里切一下才对得上。
+    @MainActor func applyAppIcon() {
+        guard let name = iconResource else {
+            // nil 而不是重新加载 AppIcon.icns:nil 是"恢复 bundle 默认",
+            // 由系统去取,不会因为找不到资源变成空白图标。
+            NSApplication.shared.applicationIconImage = nil
+            return
+        }
+        guard let url = Bundle.main.url(forResource: name, withExtension: "icns"),
+              let image = NSImage(contentsOf: url) else {
+            NSApplication.shared.applicationIconImage = nil
+            return
+        }
+        NSApplication.shared.applicationIconImage = image
+    }
 }
 
 extension Color {
