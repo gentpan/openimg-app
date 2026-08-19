@@ -555,7 +555,39 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// 退出。
+    ///
+    /// 先请服务器把这枚令牌作废,再抹掉本机那份。顺序不能反:抹完就没有凭据
+    /// 去调撤销接口了。
+    ///
+    /// 撤销失败**不阻断退出**——用户要的是"从这台机器上下线",而网络出问题时
+    /// 把他卡在登录态里毫无道理。但会如实说明服务器那边没撤成,而不是笼统地
+    /// 报一句"已退出"。
     func signOut() {
+        // 客户端要在清空之前拿到手:它在构造时就把令牌抓走了,而 signOutLocally
+        // 是同步执行的——放到 Task 里再 client() 的话,等它真正跑起来时令牌
+        // 已经是空串,撤销请求会带着空凭据出门。
+        let c = try? client()
+        let srv = server
+        signOutLocally()
+        guard let c else {
+            // 本来就没连上,没有令牌可撤,不必说服务器那边的事。
+            return
+        }
+        Task {
+            do {
+                _ = try await c.revokeCurrentToken()
+                announce(OpenimgAuth.signedOutAndRevoked)
+            } catch {
+                NSLog("[openimg] 退出时撤销令牌失败 server=%@: %@",
+                      srv, String(describing: error))
+                announce(OpenimgAuth.signOutIsLocalOnly, seconds: 8)
+            }
+        }
+    }
+
+    /// 只清本机状态。撤销那一步由 signOut 负责。
+    private func signOutLocally() {
         watchStop()
         aiReset()
         watchSkip.removeAll()
@@ -572,10 +604,8 @@ final class AppModel: ObservableObject {
         total = 0
         selection = []
         section = .settings
-        // Says what actually happened. A token cannot revoke itself — that is
-        // the same boundary that stops a leaked one from taking over an
-        // account — so claiming "signed out" would overstate it.
-        announce(OpenimgAuth.signOutIsLocalOnly, seconds: 8)
+        // 提示由 signOut 在撤销有结果之后发:成没成是两句不同的话,这里发的话
+        // 只会被后面那句盖掉,或者更糟——先说"已作废"再发现没成。
     }
 
     // MARK: - Stats

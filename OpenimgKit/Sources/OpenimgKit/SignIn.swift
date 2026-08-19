@@ -66,16 +66,27 @@ public enum OpenimgAuth {
         return (minted.plain, account)
     }
 
-    /// Signing out is local only, and that is a property of the server rather
-    /// than an omission here: `/api/tokens` is cookie-only, so a token cannot
-    /// revoke itself. That boundary is what stops a leaked token from being
-    /// able to rearrange the account's credentials — worth keeping even though
-    /// it means the token stays valid on the server until the user removes it
-    /// on the website or it reaches its expiry.
+    /// 退出时令牌**会**在服务器上作废。
     ///
-    /// The UI must say so rather than implying access was withdrawn.
+    /// 这曾经做不到:删令牌那条路只认 cookie 会话,而这个客户端拿的是令牌。
+    /// 那道边界的用意是别让一枚泄露的令牌去改动账号凭据——用意是对的,但它
+    /// 连"注销自己"也一并挡住了,于是退出只是本机抹掉,服务器上那枚照旧有效。
+    /// 提示语让用户去网站删,现实是没人会去。
+    ///
+    /// 现在多了一条 DELETE /api/tokens/current,只能删调用者自己那一枚。方向
+    /// 是收权不是放权,原来那道边界完好:任意删别人那条仍然只认 cookie。
+    ///
+    /// 撤销走网络,所以可能失败。失败不阻断退出——用户要的是从这台机器下线,
+    /// 网络出问题时把他卡在登录态毫无道理——但要如实说,而不是笼统报"已退出"。
+    public static let signedOutAndRevoked = """
+        已退出，这枚令牌也已在服务器上作废。
+        """
+
+    /// 撤销没成时的说法。别把它写成"已退出"就完事:服务器上那枚还能用,
+    /// 用户有权知道,也有权自己去补一刀。
     public static let signOutIsLocalOnly = """
-        令牌已从这台设备移除。它在服务器上仍然有效，直到你在网站的        「账号设置 → API Token」里删除它，或它到期为止。
+        已从这台设备退出，但没能在服务器上作废那枚令牌（网络问题）。\
+        它仍然有效，可以在网站的「账号设置 → API Token」里手动删除。
         """
 
     /// Trades the one-time code an OAuth callback handed back for a token.

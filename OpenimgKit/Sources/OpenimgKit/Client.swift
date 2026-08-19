@@ -234,6 +234,21 @@ public struct OpenimgClient: Sendable {
         _ = try decode(OK.self, data, resp)
     }
 
+    /// 注销这枚令牌自己。
+    ///
+    /// 退出时调它,而不是只把令牌从本机抹掉:服务器上那枚原本仍然有效,而提示
+    /// 语让用户"去网站的账号设置里删"——现实是没人会去,于是每台退出过的机器
+    /// 背后都留着一枚活令牌,这正是退出想避免的事。
+    ///
+    /// 返回值表示服务器那边有没有真的撤掉(cookie 会话没有令牌可撤)。
+    @discardableResult
+    public func revokeCurrentToken() async throws -> Bool {
+        struct Out: Decodable { let revoked: Bool? }
+        let (data, resp) = try await session.data(
+            for: request("DELETE", "api/tokens/current"))
+        return try decode(Out.self, data, resp).revoked ?? false
+    }
+
     public func passkeys() async throws -> [PasskeyCredential] {
         let (data, resp) = try await session.data(for: request("GET", "auth/passkey/list"))
         struct Wrap: Decodable { let passkeys: [PasskeyCredential]? }
