@@ -389,20 +389,10 @@ private struct SidebarRow: View {
                                     : AnyShapeStyle(hovering ? .primary : .secondary))
             .padding(.horizontal, 12)
             .frame(height: Metrics.navRow)
-            .background {
-                // 悬浮用一道向右淡出的品牌色柔光,不是灰色方块。
-                //
-                // 方块有四条硬边,而这一栏里唯一的边是最左那根轨道——多出来
-                // 的三条边会把行读成一个独立控件,和"轨道上的一格"是两种语言。
-                // 淡出的柔光正好是选中态那层光的弱化版:同一件事轻说一遍,
-                // 于是悬浮天然读作"快选到了"。
-                LinearGradient(
-                    colors: [Color.brand.opacity(hovering && !active ? 0.10 : 0), .clear],
-                    startPoint: .leading, endPoint: .trailing
-                )
-                .frame(width: 120)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            // 悬浮不画任何底:这一栏里唯一的边是最左那根轨道,给行加底就是又
+            // 引入一种形状。变白加放大已经够说明"指着的是这一行",而且
+            // scaleEffect 不参与布局,行高不会跟着抖。
+            .scaleEffect(hovering && !active ? 1.1 : 1, anchor: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

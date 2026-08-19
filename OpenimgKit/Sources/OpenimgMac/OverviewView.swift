@@ -21,7 +21,7 @@ struct OverviewView: View {
     /// 分组:先「我还剩多少」(空间、签到),再「东西长什么样」(构成、格式),
     /// 最后「最近发生了什么」(最近上传、趋势、流水)。
     private enum CardID: String, Hashable, Sendable {
-        case quota, checkin, composition, format, recent, trend, ledger
+        case quota, checkin, composition, format, recent, activity
     }
 
     private var cards: [BoardCard<CardID>] {
@@ -32,9 +32,11 @@ struct OverviewView: View {
             BoardCard(.format),
             // 唯一真吃宽度的卡:三列档跨两格,缩略图从 4 列变 6 列。
             BoardCard(.recent, spans: [3: 2]),
-            BoardCard(.trend),
-            // 12 条 × 37pt 单栏 = 514pt,它一个人就是原来那个失衡的全部来源。
-            BoardCard(.ledger, spans: [2: 2, 3: 3]),
+            // 流水与趋势并排,占满整行,内部按 1:2 切。
+            //
+            // 合成一格而不是两张各自参与装箱:1:2 在整数格里排不出来
+            // (两列档只能 1:1),而这个比例是要在任何宽度下都成立的。
+            BoardCard(.activity, spans: [2: 2, 3: 3]),
         ]
     }
 
@@ -46,8 +48,7 @@ struct OverviewView: View {
             case .composition: compositionCard
             case .format:      formatCard
             case .recent:      recentCard
-            case .trend:       trendCard
-            case .ledger:      ledgerCard
+            case .activity:    activityRow
             }
         }
         .task { await model.loadStats() }
@@ -62,24 +63,21 @@ struct OverviewView: View {
     @ViewBuilder private var recentCard: some View {
         if !model.images.isEmpty {
             PanelCard(L.s.overview.recentTitle, "photo.stack") {
-                let shots = Array(model.images.prefix(8))
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4),
-                          spacing: 6) {
-                    ForEach(shots) { img in
-                        Button {
-                            model.section = .gallery
-                            model.detail = img
-                        } label: {
-                            Thumbnail(url: img.thumbURL, client: try? model.client())
-                                .frame(height: 54)
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .help(img.origName)
-                    }
-                }
+                RecentStrip(model: model)
             }
         }
+    }
+
+    /// 空间流水与上传趋势并排,宽度 1:2。
+    ///
+    /// 流水是一列窄条目,宽了只是把「说明……数字」拉成横跨半屏的虚线;趋势是
+    /// 14 根柱子,窄了柱间距发虚。同一行里一个要窄一个要宽,正好互补。
+    ///
+    /// 做成独立的 View 而不是 OverviewView 上的一个属性:环境值是 CardBoard
+    /// 加在「闭包返回的那个视图」上的,只有它的子视图读得到。写在 OverviewView
+    /// 自己身上会一直读到默认值 0。
+    private var activityRow: some View {
+        SplitRow(ratio: 1.0 / 3.0) { ledgerCard } trailing: { trendCard }
     }
 
     // MARK: - 上传趋势
@@ -385,4 +383,101 @@ struct OverviewView: View {
 
 // MARK: - Card chrome
 
+/// 一格之内按比例横切成两块。
+///
+/// 用本格的实际宽度算,不用 `.frame(maxWidth:)` —— 后者只会把空间均分,
+/// 分不出 1:2。
+private struct SplitRow<Leading: View, Trailing: View>: View {
+    let ratio: Double
+    @ViewBuilder let leading: Leading
+    @ViewBuilder let trailing: Trailing
 
+    @Environment(\.cardWidth) private var cardWidth
+
+    var body: some View {
+        let inner = max(1, cardWidth - BoardFit.gap)
+        HStack(alignment: .top, spacing: BoardFit.gap) {
+            leading.frame(width: inner * ratio)
+            trailing.frame(width: inner * (1 - ratio))
+        }
+    }
+}
+
+/// 最近上传的缩略图。
+///
+/// 原来是 4 列 × 54pt 定高,在 474pt 的列里算出来是 106×54 —— 2:1 的扁条,
+/// 一张竖构图的照片到这里只剩中间一道,认不出是哪张。改成按 4:3 定比例:
+/// 高度随列宽走,横竖构图都还看得出是什么。
+///
+/// 悬浮才浮出文件名。常驻的话八张图配八条字,这张卡就从"看一眼自己的图"
+/// 变成了一张文件列表 —— 那是图库该干的事。
+private struct RecentStrip: View {
+    @ObservedObject var model: AppModel
+    @Environment(\.cardSpan) private var cardSpan
+
+    /// 跨两格时列数从 4 变 6,行数不变。跨度变宽只加列不加高,卡片才不会
+    /// 在那一行里突然比邻居高出一截。
+    private var columns: Int { cardSpan >= 2 ? 6 : 4 }
+
+    var body: some View {
+        let shots = Array(model.images.prefix(columns * 2))
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: columns),
+                  spacing: 6) {
+            ForEach(shots) { img in
+                Tile(img: img, model: model)
+            }
+        }
+    }
+
+    private struct Tile: View {
+        let img: RemoteImage
+        @ObservedObject var model: AppModel
+        @State private var hovering = false
+
+        var body: some View {
+            Button {
+                model.section = .gallery
+                model.detail = img
+            } label: {
+                Thumbnail(url: img.thumbURL, client: try? model.client())
+                    // .fit 而不是 .fill:Thumbnail 是 Color.clear 打底的柔性
+                    // 视图,.fill 会让它在两个方向上都不小于父级的提议,而格子
+                    // 高度是无界的——那样会撑破。.fit 正好是"拿给定的宽,按比例
+                    // 推出高"。真正的填充裁切发生在 Thumbnail 内部。
+                    .aspectRatio(4.0 / 3.0, contentMode: .fit)
+                    .overlay(alignment: .bottom) { caption }
+                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(hovering ? Color.brand : .white.opacity(0.07),
+                                          lineWidth: hovering ? 1.5 : 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .animation(.easeOut(duration: 0.12), value: hovering)
+            .help(img.origName)
+        }
+
+        /// 名字压在一层从下往上收的黑罩里,不是压在图上。浅色的图上直接放白字
+        /// 会读不出来,而这张卡里什么颜色的图都可能出现。
+        @ViewBuilder private var caption: some View {
+            if hovering {
+                Text(img.origName)
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.bottom, 4)
+                    .padding(.top, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        LinearGradient(colors: [.clear, .black.opacity(0.72)],
+                                       startPoint: .top, endPoint: .bottom)
+                    )
+                    .transition(.opacity)
+            }
+        }
+    }
+}

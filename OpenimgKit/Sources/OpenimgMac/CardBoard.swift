@@ -3,11 +3,18 @@ import OpenimgKit
 
 /// 卡片当前占了几格。卡片内部靠它决定要不要分栏、列表放几条。
 private struct CardSpanKey: EnvironmentKey { static let defaultValue = 1 }
+/// 本格的实际宽度。要在格子内部再按比例切分时得有真数,靠 maxWidth 分不出
+/// 1:2 —— 那只会让两边等分。
+private struct CardWidthKey: EnvironmentKey { static let defaultValue: Double = 0 }
 
 extension EnvironmentValues {
     var cardSpan: Int {
         get { self[CardSpanKey.self] }
         set { self[CardSpanKey.self] = newValue }
+    }
+    var cardWidth: Double {
+        get { self[CardWidthKey.self] }
+        set { self[CardWidthKey.self] = newValue }
     }
 }
 
@@ -34,9 +41,11 @@ struct CardBoard<ID: Hashable & Sendable, Content: View>: View {
                             id: \.offset) { _, row in
                         HStack(alignment: .top, spacing: BoardFit.gap) {
                             ForEach(row) { cell in
+                                let w = width(of: cell.span, in: fit)
                                 content(cell.id)
                                     .environment(\.cardSpan, cell.span)
-                                    .frame(width: width(of: cell.span, in: fit))
+                                    .environment(\.cardWidth, w)
+                                    .frame(width: w)
                             }
                         }
                         // 行内靠左起排。行尾余量已经在装箱时并给最后一张卡了,
