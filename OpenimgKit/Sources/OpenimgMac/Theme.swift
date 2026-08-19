@@ -35,13 +35,13 @@ enum BrandTint: String, CaseIterable, Sendable {
     var accent: Color {
         switch self {
         case .green: Color(red: 0x90 / 255, green: 0xFF / 255, blue: 0x3A / 255)
-        case .violet: Color(red: 0x7C / 255, green: 0x2E / 255, blue: 0xE0 / 255)
+        case .violet: Color(red: 0x76 / 255, green: 0x24 / 255, blue: 0xF4 / 255)
         }
     }
 
     /// 填充之上的前景 = `--color-brand-ink`。绿的相对亮度 0.778,白字在它
-    /// 上面只有 1.27:1(不是偏低,是读不了),所以配近黑;紫的 0.135,白字
-    /// 6.32:1,配白。整套控件只认这一个变量,换色不用改任何组件。
+    /// 上面只有 1.27:1(不是偏低,是读不了),所以配近黑;紫的 0.116,白字
+    /// 6.31:1,配白。整套控件只认这一个变量,换色不用改任何组件。
     var ink: Color {
         switch self {
         case .green: Color(red: 0x0A / 255, green: 0x1B / 255, blue: 0x02 / 255)
@@ -53,7 +53,7 @@ enum BrandTint: String, CaseIterable, Sendable {
     var display: Color {
         switch self {
         case .green: Color(red: 0xC8 / 255, green: 0xFF / 255, blue: 0x9C / 255)
-        case .violet: Color(red: 0xA8 / 255, green: 0x7D / 255, blue: 0xFF / 255)
+        case .violet: Color(red: 0xB4 / 255, green: 0x82 / 255, blue: 0xFF / 255)
         }
     }
 

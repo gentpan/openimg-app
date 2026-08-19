@@ -367,7 +367,7 @@ private struct SidebarRow: View {
             .padding(.vertical, 10)
             .background {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(active ? AnyShapeStyle(Color.brand.opacity(0.85))
+                    .fill(active ? AnyShapeStyle(Color.brand)
                                  : AnyShapeStyle(Color.white.opacity(hovering ? 0.07 : 0)))
             }
             .contentShape(Rectangle())
