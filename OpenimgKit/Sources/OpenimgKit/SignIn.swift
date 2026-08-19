@@ -208,6 +208,48 @@ public enum OpenimgAuth {
         return req
     }
 
+
+    /// 原生 Passkey 登录:要挑战 → (调用方做系统仪式) → 交断言换一次性 code。
+    ///
+    /// 拆成两半而不是一个函数,是因为中间那步必须在 App 层做:系统仪式要一个
+    /// 展示锚点(窗口),而 Kit 不该知道有窗口这回事。
+    ///
+    /// 不带邮箱(可发现凭证):让系统把这台设备上、这个域名下的凭证列出来由用户
+    /// 挑。带邮箱就得先问服务器"这个邮箱有哪些凭证",而那一问本身会泄露某个
+    /// 邮箱注册过没有。
+    public static func passkeyLoginBegin(
+        server: URL, session: URLSession = .shared
+    ) async throws -> PasskeyLoginStart {
+        try validate(server)
+        return try await post(server: server, path: "auth/passkey/login/begin",
+                              session: session, body: [:])
+    }
+
+    /// 交回断言,换一次性 code。
+    ///
+    /// native=true 让服务端回 code 而不是下 cookie——app 拿不出 cookie,而一个
+    /// 它无法出示的会话只会让被窃的响应更值钱(服务端那条分支的注释也是这么
+    /// 写的)。code 随后走 exchange 换长效令牌,与 OAuth 共用同一个出口。
+    public static func passkeyLoginFinish(
+        server: URL, flow: String, assertion: WebAuthnAssertion,
+        session: URLSession = .shared
+    ) async throws -> String {
+        try validate(server)
+        struct Out: Decodable { let code: String }
+        var req = request("POST", server: server, path: "auth/passkey/login/finish")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        struct Body: Encodable {
+            let flow: String
+            let native: Bool
+            let credential: WebAuthnAssertion
+        }
+        req.httpBody = try JSONEncoder().encode(
+            Body(flow: flow, native: true, credential: assertion))
+        let (data, resp) = try await session.data(for: req)
+        let out: Out = try decode(data, resp)
+        return out.code
+    }
+
     private static func post<T: Decodable>(server: URL, path: String, session: URLSession,
                                            body: [String: Any]) async throws -> T {
         var req = request("POST", server: server, path: path)

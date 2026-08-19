@@ -12,6 +12,7 @@ final class PasskeyEnroller: NSObject, @unchecked Sendable,
                              ASAuthorizationControllerDelegate,
                              ASAuthorizationControllerPresentationContextProviding {
     private var continuation: CheckedContinuation<ASAuthorizationPlatformPublicKeyCredentialRegistration, Error>?
+    private var assertContinuation: CheckedContinuation<ASAuthorizationPlatformPublicKeyCredentialAssertion, Error>?
     private var controller: ASAuthorizationController?
 
     func register(rpID: String, challenge: Data, userID: Data,
@@ -31,8 +32,37 @@ final class PasskeyEnroller: NSObject, @unchecked Sendable,
         }
     }
 
+    /// 登录用的断言仪式。
+    ///
+    /// 与注册同一个 provider,差别只在请求类型:注册是"造一把新钥匙",登录是
+    /// "用已有的钥匙签一下挑战"。所以复用同一个 controller 与同一套回调。
+    ///
+    /// 不传 allowedCredentials:让系统把这台设备上、这个域名下的凭证都列出来
+    /// 由用户挑。传了的话就得先问服务器"这个邮箱有哪些凭证",而那一问本身
+    /// 会泄露某个邮箱注册过没有。
+    func assert(rpID: String, challenge: Data) async throws
+        -> ASAuthorizationPlatformPublicKeyCredentialAssertion {
+        try await withCheckedThrowingContinuation { cont in
+            assertContinuation = cont
+            let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(
+                relyingPartyIdentifier: rpID)
+            let request = provider.createCredentialAssertionRequest(challenge: challenge)
+            let c = ASAuthorizationController(authorizationRequests: [request])
+            c.delegate = self
+            c.presentationContextProvider = self
+            controller = c
+            c.performRequests()
+        }
+    }
+
     func authorizationController(controller: ASAuthorizationController,
                                  didCompleteWithAuthorization authorization: ASAuthorization) {
+        if let asr = authorization.credential
+            as? ASAuthorizationPlatformPublicKeyCredentialAssertion {
+            assertContinuation?.resume(returning: asr)
+            assertContinuation = nil
+            return
+        }
         if let reg = authorization.credential
             as? ASAuthorizationPlatformPublicKeyCredentialRegistration {
             continuation?.resume(returning: reg)
@@ -47,6 +77,8 @@ final class PasskeyEnroller: NSObject, @unchecked Sendable,
                                  didCompleteWithError error: Error) {
         continuation?.resume(throwing: error)
         continuation = nil
+        assertContinuation?.resume(throwing: error)
+        assertContinuation = nil
     }
 
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
