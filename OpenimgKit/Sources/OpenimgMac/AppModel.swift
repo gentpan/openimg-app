@@ -69,6 +69,14 @@ final class AppModel: ObservableObject {
     /// anyone who would rather not type an account password into a third-party
     /// binary.
     @Published var useToken = false
+    /// 登录页停在注册那一档。不落盘:它是当次的意图,不是偏好。
+    @Published var registering = false
+    /// 注册用的昵称与邮箱验证码。
+    @Published var regName = ""
+    @Published var regCode = ""
+    /// 验证码重发倒计时。0 表示可以发。
+    @Published var regCooldown = 0
+    @Published var regCodeSent = false
     @Published var account: Account?
     @Published var quota: Quota?
 
@@ -447,14 +455,82 @@ final class AppModel: ObservableObject {
     private let oauth = OAuthSignIn()
 
     var canSubmit: Bool {
-        useToken ? !token.isEmpty : (!email.isEmpty && !password.isEmpty)
+        if useToken { return !token.isEmpty }
+        if registering {
+            // 六位码在本地先拦一道:服务端 binding 要求 len=6,少一位就是一次
+            // 白跑的往返,而错误还会笼统地报成"凭据太短"。
+            return !email.isEmpty && password.count >= 8
+                && !regName.trimmingCharacters(in: .whitespaces).isEmpty
+                && regCode.count == 6
+        }
+        return !email.isEmpty && !password.isEmpty
     }
+
+    /// 能不能发验证码。邮箱填了、且不在倒计时里。
+    var canSendRegCode: Bool { !email.isEmpty && regCooldown == 0 && !busy }
 
     /// What the primary button and the return key both do, so the form has one
     /// submit path regardless of which mode it is in.
     func primaryAction() async {
         guard canSubmit, !busy else { return }
-        if useToken { await connect() } else { await signIn() }
+        if useToken { await connect() } else if registering { await register() } else { await signIn() }
+    }
+
+    /// 请服务器发一封注册验证码,并起 60 秒倒计时。
+    ///
+    /// 倒计时是本地的,只为挡住连点——真正的频率限制在服务端。它先起再发:
+    /// 请求失败也不立刻放开,否则一个打不通的网络会变成可以无限点的按钮。
+    func sendRegisterCode() async {
+        guard canSendRegCode else { return }
+        guard let url = URL(string: server.trimmingCharacters(in: .whitespaces)) else {
+            announce(message(OpenimgError.badServerURL)); return
+        }
+        regCooldown = 60
+        startRegCooldown()
+        do {
+            try await OpenimgAuth.registerCode(server: url, email: email)
+            regCodeSent = true
+            announce(L.s.login.regCodeSent(email))
+        } catch {
+            announce(message(error), seconds: 8)
+        }
+    }
+
+    private func startRegCooldown() {
+        Task { [weak self] in
+            while let s = self, s.regCooldown > 0 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                self?.regCooldown -= 1
+            }
+        }
+    }
+
+    /// 注册并直接登录。
+    ///
+    /// 建完账号服务端下的是 cookie 会话,而这个客户端靠令牌活着,所以 Kit 那边
+    /// 紧接着换成长效令牌——与密码登录完全同一段逻辑,见 OpenimgAuth.register。
+    func register() async {
+        busy = true
+        defer { busy = false }
+        do {
+            guard let url = URL(string: server.trimmingCharacters(in: .whitespaces)) else {
+                throw OpenimgError.badServerURL
+            }
+            let (minted, _) = try await OpenimgAuth.register(
+                server: url, email: email, password: password,
+                code: regCode, name: regName.trimmingCharacters(in: .whitespaces),
+                device: deviceName
+            )
+            token = minted
+            password = ""
+            regCode = ""
+            registering = false
+            UserDefaults.standard.set(email, forKey: "email")
+            await connect()
+        } catch {
+            account = nil
+            announce(message(error), seconds: 8)
+        }
     }
 
     /// Google, GitHub or passkey. All three finish the same way: the sheet

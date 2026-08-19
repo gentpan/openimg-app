@@ -43,27 +43,77 @@ public enum OpenimgAuth {
             body: ["email": email, "password": password]
         )
 
-        // 2. Retire any token this device left behind, so the ten-token budget
-        //    does not fill with entries from previous sign-ins.
+        // 2-4. 会话已经在手,换成长效令牌。注册走的是同一段。
+        let token = try await mintToken(
+            server: server, device: device,
+            expiresInDays: expiresInDays, session: session)
+        return (token, account)
+    }
+
+    /// 在服务器上注册一个账号,并直接换到这台设备用的长效令牌。
+    ///
+    /// 两步而不是一步:先要一封验证码邮件(`registerCode`),再带着码建账号。
+    /// 服务端要求 6 位码,所以这里也别放行别的长度——本地先拦一道,省一次
+    /// 白跑的往返。
+    ///
+    /// 建完账号服务端下的是 cookie 会话,而这个客户端靠令牌活着,所以紧接着
+    /// 走与密码登录**完全相同**的那段换取逻辑:同一份"退掉本机旧令牌、铸新的、
+    /// 丢掉会话"。分两份写的话,哪天令牌预算或命名规则变了,注册这条会悄悄
+    /// 落在旧规则上。
+    public static func register(
+        server: URL,
+        email: String,
+        password: String,
+        code: String,
+        name: String,
+        device: String,
+        expiresInDays: Int = 365,
+        session: URLSession = .shared
+    ) async throws -> (token: String, account: Account) {
+        try validate(server)
+        let account: Account = try await post(
+            server: server, path: "auth/register", session: session,
+            body: ["email": email, "password": password, "code": code, "name": name]
+        )
+        let token = try await mintToken(
+            server: server, device: device,
+            expiresInDays: expiresInDays, session: session)
+        return (token, account)
+    }
+
+    /// 请服务器给这个邮箱发一封注册验证码。
+    ///
+    /// 与找回密码不同,这一条会明说邮箱是不是已经注册过——注册本来就藏不住
+    /// 这件事(建账号那步必然要拒绝重复),假装不知道只会让人多试一遍。
+    public static func registerCode(
+        server: URL, email: String, session: URLSession = .shared
+    ) async throws {
+        try validate(server)
+        struct Ack: Decodable {}
+        let _: Ack = try await post(
+            server: server, path: "auth/register/code", session: session,
+            body: ["email": email])
+    }
+
+    /// 拿着已经在手的 cookie 会话换一枚长效令牌。登录与注册共用。
+    private static func mintToken(
+        server: URL, device: String, expiresInDays: Int, session: URLSession
+    ) async throws -> String {
+        // 退掉这台设备留下的旧令牌,免得十枚的预算被历次登录填满。
         let name = tokenName(device: device)
         if let existing: TokenList = try? await get(server: server, path: "api/tokens", session: session) {
             for t in existing.tokens where t.name == name && !t.revoked {
                 _ = try? await delete(server: server, path: "api/tokens/\(t.id)", session: session)
             }
         }
-
-        // 3. Mint the credential the app will actually live on.
         let minted: MintedToken = try await post(
             server: server, path: "api/tokens", session: session,
             body: ["name": name, "expires_in_days": expiresInDays]
         )
-
-        // 4. Drop the session. The app does not use it after this, and leaving
-        //    it in the shared cookie store means a credential lying around that
-        //    nothing is watching the lifetime of.
+        // 丢掉会话:app 之后不用它,留在共享 cookie 存储里等于放着一份没人
+        // 盯着有效期的凭据。
         clearCookies(for: server, session: session)
-
-        return (minted.plain, account)
+        return minted.plain
     }
 
     /// 退出时令牌**会**在服务器上作废。

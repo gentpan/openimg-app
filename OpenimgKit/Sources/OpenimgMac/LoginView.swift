@@ -36,10 +36,49 @@ struct LoginView: View {
                         TextField(L.s.login.emailPlaceholder, text: $model.email)
                     }
                     Field(icon: "lock.fill") {
-                        SecureField(L.s.login.passwordPlaceholder, text: $model.password)
+                        SecureField(model.registering ? L.s.login.passwordNewPlaceholder
+                                                      : L.s.login.passwordPlaceholder,
+                                    text: $model.password)
                             .onSubmit { Task { await model.primaryAction() } }
                     }
+                    if model.registering {
+                        Field(icon: "person.fill") {
+                            TextField(L.s.login.namePlaceholder, text: $model.regName)
+                        }
+                        // 验证码与"发送"并排:分成两行的话,用户填完邮箱要往下
+                        // 找按钮、发完再往上填码,顺序是拧的。
+                        HStack(spacing: 8) {
+                            Field(icon: "number") {
+                                TextField(L.s.login.codePlaceholder, text: $model.regCode)
+                                    .onSubmit { Task { await model.primaryAction() } }
+                            }
+                            Button(model.regCooldown > 0
+                                   ? L.s.login.resendIn(model.regCooldown)
+                                   : L.s.login.sendCode) {
+                                Task { await model.sendRegisterCode() }
+                            }
+                            .buttonStyle(QuietButton())
+                            .frame(height: Metrics.field)
+                            .disabled(!model.canSendRegCode)
+                        }
+                    }
                 }
+            }
+
+            // 登录 / 注册切换。只在用密码时出现——令牌那一档是"我已经有凭据了",
+            // 注册在那里没有意义。
+            if !model.useToken {
+                Picker("", selection: Binding(
+                    get: { model.registering },
+                    set: { model.registering = $0 }
+                )) {
+                    Text(L.s.login.modeSignIn).tag(false)
+                    Text(L.s.login.modeRegister).tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.large)
+                .padding(.bottom, 2)
             }
 
             Button {
@@ -47,7 +86,8 @@ struct LoginView: View {
             } label: {
                 HStack(spacing: 7) {
                     if model.busy { ProgressView().controlSize(.small).tint(.white) }
-                    Text(model.busy ? L.s.login.submitting : L.s.login.submit)
+                    Text(model.busy ? L.s.login.submitting
+                         : (model.registering ? L.s.login.registerSubmit : L.s.login.submit))
                 }
                 .frame(maxWidth: .infinity)
             }

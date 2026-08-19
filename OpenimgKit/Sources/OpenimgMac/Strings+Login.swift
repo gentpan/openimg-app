@@ -27,6 +27,21 @@ struct LoginStrings: Sendable {
     let usePasswordSignIn: String
     let useTokenSignIn: String
 
+    // 注册。与登录共用邮箱和密码两栏,所以这里只补它多出来的那几样。
+    let modeSignIn: String
+    let modeRegister: String
+    let namePlaceholder: String
+    /// 密码要求写在占位符里而不是错误提示里:让人先知道,而不是提交完被拒。
+    let passwordNewPlaceholder: String
+    let codePlaceholder: String
+    let sendCode: String
+    /// 倒计时中的按钮文案,参数是剩余秒数。
+    let resendIn: @Sendable (Int) -> String
+    let regCodeSent: @Sendable (String) -> String
+    let registerSubmit: String
+    let haveAccount: String
+    let noAccount: String
+
     let tokenNote: String
     let passwordNote: String
 
@@ -52,6 +67,18 @@ extension LoginStrings {
         signInWith: { provider in "使用 \(provider) 登录" },
         usePasswordSignIn: "改用邮箱密码登录",
         useTokenSignIn: "改用访问令牌登录",
+
+        modeSignIn: "登录",
+        modeRegister: "注册",
+        namePlaceholder: "昵称",
+        passwordNewPlaceholder: "密码（至少 8 位）",
+        codePlaceholder: "邮箱验证码（6 位）",
+        sendCode: "发送验证码",
+        resendIn: { s in "\(s) 秒后重发" },
+        regCodeSent: { email in "验证码已发到 \(email)，5 分钟内有效" },
+        registerSubmit: "创建账号",
+        haveAccount: "已有账号？",
+        noAccount: "还没有账号？",
         tokenNote: "令牌保存在钥匙串，不写入配置文件",
         passwordNote: "密码只用来换取一枚这台设备专用的令牌，不会被保存",
         callbackMissingCode: "登录回调里没有拿到登录码",
@@ -74,6 +101,18 @@ extension LoginStrings {
         signInWith: { provider in "Sign in with \(provider)" },
         usePasswordSignIn: "Use email and password instead",
         useTokenSignIn: "Use an access token instead",
+
+        modeSignIn: "Sign in",
+        modeRegister: "Sign up",
+        namePlaceholder: "Display name",
+        passwordNewPlaceholder: "Password (at least 8 characters)",
+        codePlaceholder: "Email code (6 digits)",
+        sendCode: "Send code",
+        resendIn: { s in "Resend in \(s)s" },
+        regCodeSent: { email in "Code sent to \(email) — valid for 5 minutes" },
+        registerSubmit: "Create account",
+        haveAccount: "Already have an account?",
+        noAccount: "No account yet?",
         tokenNote: "The token is stored in the Keychain, never in a config file",
         passwordNote: "Your password is only used to get a token for this Mac — it is never saved",
         callbackMissingCode: "The sign-in callback did not include an authorization code",
