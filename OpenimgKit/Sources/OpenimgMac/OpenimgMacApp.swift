@@ -240,17 +240,21 @@ struct Sidebar: View {
 
             // visibleSections 而不是 allCases:没配 AI 的部署里「生成」和
             // 「修图」整行不存在,而不是灰着。见 AppModel.visibleSections。
-            VStack(spacing: 4) {
-                ForEach(model.visibleSections) { s in
-                    SidebarRow(
-                        section: s,
-                        active: model.section == s,
-                        // 转圈按种类分:两页共用一张历史表,不分开的话在修图
-                        // 时「生成」那行也会跟着转,像是自己动了起来。
-                        busy: (s == .upload && model.uploading)
-                            || (s == .generate && model.aiPendingText)
-                            || (s == .retouch && model.aiPendingEdit)
-                    ) { model.section = s }
+            NavRail(count: model.visibleSections.count,
+                    index: model.visibleSections.firstIndex(of: model.section)) {
+                // spacing 0:发光条是一段连续竖线上的一格,行间留缝就对不上了。
+                VStack(spacing: 0) {
+                    ForEach(model.visibleSections) { s in
+                        SidebarRow(
+                            section: s,
+                            active: model.section == s,
+                            // 转圈按种类分:两页共用一张历史表,不分开的话在修图
+                            // 时「生成」那行也会跟着转,像是自己动了起来。
+                            busy: (s == .upload && model.uploading)
+                                || (s == .generate && model.aiPendingText)
+                                || (s == .retouch && model.aiPendingEdit)
+                        ) { model.section = s }
+                    }
                 }
             }
             .padding(.horizontal, 10)
@@ -378,13 +382,26 @@ private struct SidebarRow: View {
                 Text(L.s.nav.section(section)).font(.system(size: 15))
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(active ? AnyShapeStyle(Color.brandInk) : AnyShapeStyle(.secondary))
+            // 选中不再是一块实心圆角底,而是文字本身变成品牌色——发光条已经
+            // 在左边指明了是哪一行,再压一块实底就是同一件事说两遍,而且那块
+            // 底会把发光条的光吃掉一半。
+            .foregroundStyle(active ? AnyShapeStyle(Color.brand)
+                                    : AnyShapeStyle(hovering ? .primary : .secondary))
             .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .frame(height: Metrics.navRow)
             .background {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(active ? AnyShapeStyle(Color.brand)
-                                 : AnyShapeStyle(Color.white.opacity(hovering ? 0.07 : 0)))
+                // 悬浮用一道向右淡出的品牌色柔光,不是灰色方块。
+                //
+                // 方块有四条硬边,而这一栏里唯一的边是最左那根轨道——多出来
+                // 的三条边会把行读成一个独立控件,和"轨道上的一格"是两种语言。
+                // 淡出的柔光正好是选中态那层光的弱化版:同一件事轻说一遍,
+                // 于是悬浮天然读作"快选到了"。
+                LinearGradient(
+                    colors: [Color.brand.opacity(hovering && !active ? 0.10 : 0), .clear],
+                    startPoint: .leading, endPoint: .trailing
+                )
+                .frame(width: 120)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .contentShape(Rectangle())
         }

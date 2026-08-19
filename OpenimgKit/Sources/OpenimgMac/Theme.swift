@@ -23,6 +23,12 @@ enum Metrics {
     /// 显得局促。但**并排放在 Field 旁边的按钮要用这个数,不是 control**
     /// ——同一行里两个高度差六个点,肉眼一看就是没对齐。
     static let field: CGFloat = 38
+    /// 侧栏一行的高度。
+    ///
+    /// 必须是定值:那根发光条靠 index × 行高 定位,行高一变位置就错。原来行
+    /// 是内容撑起来的、行间还有 4pt 间距,两者都得去掉——发光条是一段连续
+    /// 竖线上的一格,中间断开就不成立了。
+    static let navRow: CGFloat = 40
 }
 
 /// 品牌色相。与网站的 `data-brand` 同一套取值,两端切换后观感一致。
@@ -55,6 +61,17 @@ enum BrandTint: String, CaseIterable, Sendable {
         switch self {
         case .green: Color(red: 0xC8 / 255, green: 0xFF / 255, blue: 0x9C / 255)
         case .violet: Color(red: 0xB4 / 255, green: 0x82 / 255, blue: 0xFF / 255)
+        }
+    }
+
+    /// 侧栏发光条的强度。
+    ///
+    /// 绿的相对亮度 0.778,紫的 0.116,差了六倍多。同一组数值紫色是恰到好处
+    /// 的一抹光晕,绿色就是一条刺眼的灯管——所以两边分开给,不共用。
+    var navGlow: Double {
+        switch self {
+        case .green: 0.42
+        case .violet: 0.85
         }
     }
 
@@ -113,6 +130,8 @@ extension Color {
     static let secondaryLabel = Color(nsColor: .secondaryLabelColor)
 
     static var brandInk: Color { BrandTint.current.ink }
+    /// 侧栏发光条的强度,随色相走。
+    static var brandGlow: Double { BrandTint.current.navGlow }
 
     /// "It worked" — kept at a distinctly different hue (teal, 173°) from the
     /// brand (101°) so a success message never reads as brand chrome.
