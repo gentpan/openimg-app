@@ -57,10 +57,15 @@ final class OAuthSignIn: NSObject, ASWebAuthenticationPresentationContextProvidi
                 cont.resume(returning: code)
             }
             s.presentationContextProvider = self
-            // A shared cookie jar would silently reuse whichever account the
-            // user last signed into on this Mac, which is the wrong default
-            // for a login button and impossible to recover from in the sheet.
-            s.prefersEphemeralWebBrowserSession = true
+            // 复用 Safari 的登录态,不开无痕会话。
+            //
+            // 原来是 true,理由是"共用 cookie 会默默沿用上次在这台 Mac 上登录
+            // 的账号"。那个顾虑成立,但代价被低估了:无痕意味着每一次点
+            // Google 都要从头输一遍密码加二次验证,而这个窗口的尺寸是系统定
+            // 的、改不了——于是每次登录都是一个又大又慢的全流程。
+            //
+            // 复用之后多数时候是一闪而过。想换账号就去 Safari 里退出,这是一
+            // 次性的、可恢复的;而每次重输密码是每次都要付的成本。
             session = s
             if !s.start() {
                 cont.resume(throwing: OpenimgError.transport(L.s.login.cannotOpenAuthWindow))
