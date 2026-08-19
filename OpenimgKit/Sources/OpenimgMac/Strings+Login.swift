@@ -14,7 +14,6 @@ struct LoginStrings: Sendable {
 
     let emailPlaceholder: String
     let passwordPlaceholder: String
-    let tokenPlaceholder: String
 
     let submit: String
     let submitting: String
@@ -23,8 +22,6 @@ struct LoginStrings: Sendable {
     /// 第三方登录按钮的无障碍标签,参数是渠道名(Google / GitHub / Passkey)。
     let signInWith: @Sendable (String) -> String
 
-    let usePasswordSignIn: String
-    let useTokenSignIn: String
 
     // 注册。与登录共用邮箱和密码两栏,所以这里只补它多出来的那几样。
     let modeSignIn: String
@@ -41,7 +38,6 @@ struct LoginStrings: Sendable {
     let haveAccount: String
     let noAccount: String
 
-    let tokenNote: String
     let passwordNote: String
 
     let callbackMissingCode: String
@@ -58,13 +54,10 @@ extension LoginStrings {
         tagline: "图片托管与分发",
         emailPlaceholder: "you@example.com",
         passwordPlaceholder: "密码",
-        tokenPlaceholder: "oimg_…",
         submit: "登录",
         submitting: "登录中…",
         orDivider: "或",
         signInWith: { provider in "使用 \(provider) 登录" },
-        usePasswordSignIn: "改用邮箱密码登录",
-        useTokenSignIn: "改用访问令牌登录",
 
         modeSignIn: "登录",
         modeRegister: "注册",
@@ -77,7 +70,6 @@ extension LoginStrings {
         registerSubmit: "创建账号",
         haveAccount: "已有账号？",
         noAccount: "还没有账号？",
-        tokenNote: "令牌保存在钥匙串，不写入配置文件",
         passwordNote: "密码只用来换取一枚这台设备专用的令牌，不会被保存",
         callbackMissingCode: "登录回调里没有拿到登录码",
         cannotOpenAuthWindow: "无法打开登录窗口")
@@ -91,13 +83,10 @@ extension LoginStrings {
         tagline: "Image hosting and delivery",
         emailPlaceholder: "you@example.com",
         passwordPlaceholder: "Password",
-        tokenPlaceholder: "oimg_…",
         submit: "Sign In",
         submitting: "Signing In…",
         orDivider: "or",
         signInWith: { provider in "Sign in with \(provider)" },
-        usePasswordSignIn: "Use email and password instead",
-        useTokenSignIn: "Use an access token instead",
 
         modeSignIn: "Sign in",
         modeRegister: "Sign up",
@@ -110,7 +99,6 @@ extension LoginStrings {
         registerSubmit: "Create account",
         haveAccount: "Already have an account?",
         noAccount: "No account yet?",
-        tokenNote: "The token is stored in the Keychain, never in a config file",
         passwordNote: "Your password is only used to get a token for this Mac — it is never saved",
         callbackMissingCode: "The sign-in callback did not include an authorization code",
         cannotOpenAuthWindow: "Could not open the sign-in window")

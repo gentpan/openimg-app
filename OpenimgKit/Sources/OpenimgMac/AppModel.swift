@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import AuthenticationServices
 import SwiftUI
 import OpenimgKit
 
@@ -65,10 +66,6 @@ final class AppModel: ObservableObject {
     @Published var token = ""
     @Published var email = UserDefaults.standard.string(forKey: "email") ?? ""
     @Published var password = ""
-    /// Password is the default; the token field stays for self-hosters and for
-    /// anyone who would rather not type an account password into a third-party
-    /// binary.
-    @Published var useToken = false
     /// 登录页停在注册那一档。不落盘:它是当次的意图,不是偏好。
     @Published var registering = false
     /// 注册用的昵称与邮箱验证码。
@@ -455,7 +452,6 @@ final class AppModel: ObservableObject {
     private let oauth = OAuthSignIn()
 
     var canSubmit: Bool {
-        if useToken { return !token.isEmpty }
         if registering {
             // 六位码在本地先拦一道:服务端 binding 要求 len=6,少一位就是一次
             // 白跑的往返,而错误还会笼统地报成"凭据太短"。
@@ -473,7 +469,7 @@ final class AppModel: ObservableObject {
     /// submit path regardless of which mode it is in.
     func primaryAction() async {
         guard canSubmit, !busy else { return }
-        if useToken { await connect() } else if registering { await register() } else { await signIn() }
+        if registering { await register() } else { await signIn() }
     }
 
     /// 请服务器发一封注册验证码,并起 60 秒倒计时。
@@ -549,7 +545,16 @@ final class AppModel: ObservableObject {
             let code: String?
             switch method {
             case .passkey:
-                code = try await oauth.startWebLogin(server: server)
+                // 先试本机仪式(Touch ID / iPhone 确认),不行再回落网页。
+                //
+                // 本机这条要 associated-domains 授权,而授权要签名身份——ad-hoc
+                // 开发构建两样都没有,系统会直接拒。回落不是兜底摆设:开发构建
+                // 天天在用,没有它这个按钮在本地就是坏的。
+                if let native = try await passkeyCodeNatively() {
+                    code = native
+                } else {
+                    code = try await oauth.startWebLogin(server: server)
+                }
             case .google, .github:
                 code = try await oauth.start(provider: method.rawValue, server: server)
             }
@@ -564,6 +569,53 @@ final class AppModel: ObservableObject {
             account = nil
             announce(message(error))
         }
+    }
+
+    /// 走本机 Passkey 拿一次性 code;这台机器做不到就返回 nil,由调用方回落。
+    ///
+    /// 返回 nil 而不是抛错的只有一种情况:**这个构建没有资格**(没有签名身份、
+    /// 或关联域名文件不对)。用户主动取消也返回 nil——他不想登,回落去弹个网页
+    /// 同样不是他要的。真正的失败(网络、服务器)照旧抛出去。
+    private func passkeyCodeNatively() async throws -> String? {
+        guard let url = URL(string: server.trimmingCharacters(in: .whitespaces)) else {
+            return nil
+        }
+        let start: PasskeyLoginStart
+        do {
+            start = try await OpenimgAuth.passkeyLoginBegin(server: url)
+        } catch {
+            // 服务器不支持或没配 Passkey:这不是"本机不行",没必要回落到一个
+            // 同样不会成功的网页流程。
+            throw error
+        }
+        guard let challenge = Data(base64URL: start.options.publicKey.challenge) else {
+            return nil
+        }
+        let rpID = start.options.publicKey.rpId ?? url.host ?? ""
+        guard !rpID.isEmpty else { return nil }
+
+        let asr: ASAuthorizationPlatformPublicKeyCredentialAssertion
+        do {
+            asr = try await PasskeyEnroller().assert(rpID: rpID, challenge: challenge)
+        } catch {
+            // 系统拒绝(没资格)或用户取消,两者都退回 nil 让调用方决定。
+            NSLog("[openimg] 本机 Passkey 不可用,回落网页: %@", String(describing: error))
+            return nil
+        }
+        guard let raw = asr.credentialID as Data?,
+              let clientData = asr.rawClientDataJSON as Data?,
+              let authData = asr.rawAuthenticatorData,
+              let sig = asr.signature else { return nil }
+        let assertion = WebAuthnAssertion(
+            id: raw.base64URLEncoded,
+            rawId: raw.base64URLEncoded,
+            response: .init(
+                clientDataJSON: clientData.base64URLEncoded,
+                authenticatorData: authData.base64URLEncoded,
+                signature: sig.base64URLEncoded,
+                userHandle: asr.userID?.base64URLEncoded))
+        return try await OpenimgAuth.passkeyLoginFinish(
+            server: url, flow: start.flow, assertion: assertion)
     }
 
     /// Exchanges the password for a long-lived token, then connects with it.

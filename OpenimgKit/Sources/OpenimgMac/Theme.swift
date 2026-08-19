@@ -2,9 +2,9 @@ import SwiftUI
 
 /// One scale, and one rule about what goes on it.
 ///
-/// #5DE31D has a relative luminance of 0.574, so white on it is 1.68:1 —
+/// #90FF3A has a relative luminance of 0.778, so white on it is 1.27:1 —
 /// unreadable, not merely low. Every filled control therefore takes
-/// `Color.brandInk` (10.65:1), and white never appears on a brand surface.
+/// `Color.brandInk` (14.14:1), and white never appears on a brand surface.
 /// That single fact is the whole difference from the violet this replaces,
 /// which was 0.135 and carried white at 4.67:1.
 /// One height for every control that can sit next to another one.
@@ -27,20 +27,20 @@ enum Metrics {
 /// 品牌色相。与网站的 `data-brand` 同一套取值,两端切换后观感一致。
 ///
 /// 产品固定深色,可切的只有色相——浅色主题在网站上就删掉了(品牌绿在白底
-/// 对比度 1.79:1 不可用)。
+/// 对比度 1.27:1 不可用)。
 enum BrandTint: String, CaseIterable, Sendable {
     case green, violet
 
     /// 静息填充色 = 网站的 `--color-brand-600`。
     var accent: Color {
         switch self {
-        case .green: Color(red: 0x5D / 255, green: 0xE3 / 255, blue: 0x1D / 255)
+        case .green: Color(red: 0x90 / 255, green: 0xFF / 255, blue: 0x3A / 255)
         case .violet: Color(red: 0x7C / 255, green: 0x2E / 255, blue: 0xE0 / 255)
         }
     }
 
-    /// 填充之上的前景 = `--color-brand-ink`。绿的相对亮度 0.574,白字在它
-    /// 上面只有 1.68:1(不是偏低,是读不了),所以配近黑;紫的 0.135,白字
+    /// 填充之上的前景 = `--color-brand-ink`。绿的相对亮度 0.778,白字在它
+    /// 上面只有 1.27:1(不是偏低,是读不了),所以配近黑;紫的 0.135,白字
     /// 6.32:1,配白。整套控件只认这一个变量,换色不用改任何组件。
     var ink: Color {
         switch self {
@@ -52,7 +52,7 @@ enum BrandTint: String, CaseIterable, Sendable {
     /// 大字与图表用的浅色阶 = `--color-brand-display`。
     var display: Color {
         switch self {
-        case .green: Color(red: 0x8B / 255, green: 0xF5 / 255, blue: 0x4A / 255)
+        case .green: Color(red: 0xC8 / 255, green: 0xFF / 255, blue: 0x9C / 255)
         case .violet: Color(red: 0xA8 / 255, green: 0x7D / 255, blue: 0xFF / 255)
         }
     }
