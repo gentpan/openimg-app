@@ -93,12 +93,20 @@ public struct Quota: Codable, Sendable {
     public let uploadsToday: Int
     public let tier: Tier
     public let checkin: Checkin?
+    /// 注册时间。等级要用。
+    ///
+    /// **必须是可选的。** 不发这个键的旧自建服务器会让整个 Quota 解析失败,
+    /// 而那表现为空间卡整块空白——一个由"多加了一个字段"引起的、看不出因果的
+    /// 故障。这个仓库为同一件事写过三处手写 decoder。
+    public let memberSince: Date?
 
     /// Milestone rewards, so the client can say what the next one is worth
     /// instead of just counting days at the user.
     public struct Checkin: Codable, Sendable {
         public let checkedInToday: Bool
         public let streak: Int
+        /// 累计签到天数。等级要用;可选,理由同 memberSince。
+        public let totalDays: Int?
         public let weekBonus: Int64
         public let monthBonus: Int64
         public let daysPerWeek: Int
@@ -106,6 +114,7 @@ public struct Quota: Codable, Sendable {
 
         enum CodingKeys: String, CodingKey {
             case checkedInToday = "checked_in_today"
+            case totalDays = "total_days"
             case streak
             case weekBonus = "week_bonus"
             case monthBonus = "month_bonus"
@@ -135,6 +144,7 @@ public struct Quota: Codable, Sendable {
         case imageCount = "image_count"
         case uploadsToday = "uploads_today"
         case tier, checkin
+        case memberSince = "member_since"
     }
 }
 

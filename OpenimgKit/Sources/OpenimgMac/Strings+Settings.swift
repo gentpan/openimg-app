@@ -17,6 +17,10 @@ struct SettingsStrings: Sendable {
     // 外观
     let appearance: String
     let appAndDevice: String
+    let levelBadge: @Sendable (Int) -> String
+    let levelMax: String
+    let levelToNext: @Sendable (Int) -> String
+    let levelHow: @Sendable (Int) -> String
     let appVersion: String
     let updateCheck: String
     let updateChecking: String
@@ -216,6 +220,10 @@ extension SettingsStrings {
 
         appearance: "外观",
         appAndDevice: "应用与设备",
+        levelBadge: { n in "Lv.\(n)" },
+        levelMax: "已是最高等级",
+        levelToNext: { n in "距下一级还差 \(n)" },
+        levelHow: { d in "累计签到 \(d) 天，加上注册时长（每满 30 天算 1）。等级只是记录，不影响配额。" },
         appVersion: "版本",
         updateCheck: "检查更新",
         updateChecking: "正在检查…",
@@ -414,6 +422,10 @@ extension SettingsStrings {
 
         appearance: "Appearance",
         appAndDevice: "App & Device",
+        levelBadge: { n in "Lv.\(n)" },
+        levelMax: "Top level reached",
+        levelToNext: { n in "\(n) to go" },
+        levelHow: { d in "\(d) check-ins so far, plus one point per 30 days since you joined. Level is a record only — it does not change your quota." },
         appVersion: "Version",
         updateCheck: "Check for Updates",
         updateChecking: "Checking…",

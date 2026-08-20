@@ -3179,6 +3179,73 @@ do {
 }
 
 
+section("账号等级")
+
+do {
+    let now = Date(timeIntervalSince1970: 1_787_000_000)
+    func ago(_ days: Double) -> Date { now.addingTimeInterval(-days * 86400) }
+
+    // 一天一分,注册满 30 天一分。两者同权是有意的:只算签到的话,每天来的新用户
+    // 会瞬间超过用了两年但偶尔才来的人;只算时长的话,注册完再没打开过的也升级。
+    check("只签到:一天一分",
+          MemberLevel.points(checkinDays: 10, memberSince: nil, now: now) == 10)
+    check("只注册时长:满 30 天一分",
+          MemberLevel.points(checkinDays: 0, memberSince: ago(90), now: now) == 3)
+    check("不满 30 天不给分",
+          MemberLevel.points(checkinDays: 0, memberSince: ago(29), now: now) == 0)
+    check("两者相加",
+          MemberLevel.points(checkinDays: 10, memberSince: ago(60), now: now) == 12)
+
+    // 时间倒流不能倒扣分。系统时钟被改、或者服务端的注册时间有偏差时都会出现。
+    check("注册时间在未来也不扣分",
+          MemberLevel.points(checkinDays: 5, memberSince: now.addingTimeInterval(86400), now: now) == 5)
+    check("负的签到天数当 0",
+          MemberLevel.points(checkinDays: -3, memberSince: nil, now: now) == 0)
+
+    // 等级门槛
+    check("0 分是 Lv.1", MemberLevel.of(checkinDays: 0, memberSince: nil, now: now).level == 1)
+    check("刚好到门槛就升级",
+          MemberLevel.of(checkinDays: 7, memberSince: nil, now: now).level == 2)
+    check("差一分不升级",
+          MemberLevel.of(checkinDays: 6, memberSince: nil, now: now).level == 1)
+    check("封顶之后不再涨",
+          MemberLevel.of(checkinDays: 99_999, memberSince: nil, now: now).level == MemberLevel.levelCount)
+    check("封顶时标记 isMax",
+          MemberLevel.of(checkinDays: 99_999, memberSince: nil, now: now).isMax)
+    check("没封顶时不标 isMax",
+          !MemberLevel.of(checkinDays: 0, memberSince: nil, now: now).isMax)
+
+    // 进度条:封顶时是 1 而不是 0,也不能是 NaN——NaN 传进 SwiftUI 的宽度会让
+    // 整行不渲染,看着像卡片坏了。
+    do {
+        let max = MemberLevel.of(checkinDays: 99_999, memberSince: nil, now: now)
+        check("封顶时进度是 1", max.progress == 1)
+        check("封顶时距下一级是 0", max.pointsToNext == 0)
+        let mid = MemberLevel.of(checkinDays: 18, memberSince: nil, now: now)  // Lv.2: 7…30
+        check("进度算得对", abs(mid.progress - Double(18 - 7) / Double(30 - 7)) < 0.001)
+        check("距下一级算得对", mid.pointsToNext == 12)
+        var ok = true
+        for d in 0...800 {
+            let l = MemberLevel.of(checkinDays: d, memberSince: nil, now: now)
+            if l.progress.isNaN || l.progress < 0 || l.progress > 1 { ok = false }
+        }
+        check("任意分数下进度都在 0…1 且不是 NaN", ok)
+    }
+
+    // 等级必须随分数单调不减 —— 掉级会让人以为自己被扣了什么。
+    do {
+        var monotone = true
+        var last = 0
+        for d in 0...800 {
+            let l = MemberLevel.of(checkinDays: d, memberSince: nil, now: now).level
+            if l < last { monotone = false }
+            last = l
+        }
+        check("分数增加时等级不会下降", monotone)
+    }
+}
+
+
 print("\n\(checks - failures)/\(checks) 通过")
 if failures > 0 {
     print("\(failures) 项失败")

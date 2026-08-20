@@ -109,6 +109,9 @@ struct SettingsView: View {
                     }
                     Spacer(minLength: 0)
                 }
+
+                Divider().overlay(Color.white.opacity(0.06))
+                LevelRow(model: model)
             }
         }
     }
