@@ -512,7 +512,7 @@ private struct LedgerCard: View {
                 }
                 // 末页不足 5 条时不让卡片缩一截:高度跟着内容变,翻到最后一页
                 // 整张卡会往上跳,而旁边那张图表没动——看着像页面自己抖了一下。
-                .frame(minHeight: Double(Self.perPage) * 37, alignment: .top)
+                .frame(minHeight: Double(Self.perPage) * 27, alignment: .top)
             }
         }
     }
@@ -546,31 +546,45 @@ private struct LedgerCard: View {
     }
 
     private func row(_ t: QuotaTransaction) -> some View {
-        HStack(spacing: 10) {
+        // 不用 QuotaTransaction.label:它写死在共享的 Models.swift 里,
+        // 只有中文一份。
+        let label = L.s.overview.txLabel(t.type)
+        return HStack(spacing: 8) {
             Image(systemName: t.isGrant ? "plus.circle.fill" : "minus.circle.fill")
                 .foregroundStyle(t.isGrant ? Color.brand : Color.secondary)
                 .font(.caption)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    // 不用 QuotaTransaction.label:它写死在共享的 Models.swift
-                    // 里,只有中文一份。
-                    Text(L.s.overview.txLabel(t.type)).font(.caption)
-                    Text(stamp(t.createdAt))
-                        .font(.caption2.monospacedDigit()).foregroundStyle(.quaternary)
-                }
-                Text(t.reason)
-                    .font(.caption2).foregroundStyle(.tertiary)
-                    .lineLimit(1).truncationMode(.middle)
-            }
-            Spacer()
+            Text(label).font(.caption).fixedSize()
+            Text(detail(t, label))
+                .font(.caption2).foregroundStyle(.tertiary)
+                .lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: 6)
+            Text(stamp(t.createdAt))
+                .font(.caption2.monospacedDigit()).foregroundStyle(.quaternary)
+                .fixedSize()
             // 取绝对值再自己加符号。ByteCountFormatter 对负数会自带一个连字
             // 符,前面再拼一个减号就是「−-104 KB」——两个不同的字符撞在一起,
             // 看着像排版坏了。
             Text("\(t.isGrant ? "+" : "−")\(model.bytes(abs(t.bytes)))")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(t.isGrant ? Color.brand : .secondary)
+                .fixedSize()
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, 6)
+    }
+
+    /// 去掉 reason 开头那段和类型标签重复的字。
+    ///
+    /// 服务端写进来的 reason 多半以类型开头(「上传 Yetex.jpg」),而左边已经
+    /// 印了「上传」——并排就是同一个词说两遍,而这一行的宽度本来就不宽裕。
+    ///
+    /// 只砍开头,不砍别处:「删除图片 上传的封面.png」里第二个词是文件名的一
+    /// 部分,不能一起吃掉。
+    private func detail(_ t: QuotaTransaction, _ label: String) -> String {
+        var r = t.reason
+        if r.hasPrefix(label) {
+            r = String(r.dropFirst(label.count))
+        }
+        return r.trimmingCharacters(in: .whitespaces)
     }
 }
 
