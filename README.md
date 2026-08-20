@@ -1,163 +1,116 @@
-# Openimg for macOS
+# Openimg
 
-[openimg.io](https://openimg.io) 免费图床的 macOS 原生客户端。上传、图库、AI 生成与修图、
-上传前编辑、监控目录自动上传、整库导出 —— 纯 Swift 6 + SwiftUI，**零第三方依赖**。
+免费图床 [openimg.io](https://openimg.io) 的 macOS 客户端。拖进来就传好，链接直接进剪贴板。
 
-![概览](docs/overview.png)
+![Openimg 概览](docs/overview.png)
 
-服务端与网页端在 [gentpan/openimg](https://github.com/gentpan/openimg)。
-本仓库由主仓库的 `apple/` 目录拆出，保留了全部提交历史。
+## 下载
 
-## 下载安装
+从 [Releases](https://github.com/gentpan/openimg-app/releases/latest) 下载 zip，
+解压后把 **Openimg** 拖进「应用程序」，**双击打开**。
 
-从 [Releases](https://github.com/gentpan/openimg-app/releases) 下载 zip，解压后把
-`Openimg.app` 拖进「应用程序」，**直接双击打开**。
+不需要右键打开，也不用去系统设置里点「仍要打开」—— 这个 app 经过 Apple 公证。
 
-产物经 Developer ID 签名并已通过 Apple 公证，不需要右键打开，也不用去系统设置里放行。
+需要 macOS 14 或更新版本，Apple 芯片的 Mac。
 
-需要 macOS 14 或更新版本，Apple Silicon。
+第一次打开可以直接在里面注册，也可以用已有账号登录：邮箱密码、Google、GitHub、
+或者 Passkey（用触控 ID 免密登录）。登录一次之后就一直记着，重开不用再输。
 
-首次运行可以直接在 app 里注册，也可以用已有账号登录 —— 邮箱密码、Google、GitHub、
-Passkey 都行。密码只用来换取一枚这台设备专用的长期令牌，不会被保存；令牌进钥匙串，
-之后每次打开自动登录。
+## 能做什么
 
-登录页可以填自建实例的地址，连自己部署的服务端。
+### 传图，拿链接
 
-## 功能
+把图拖进窗口，或者按 ⌘U 选文件。传完链接自动进剪贴板 —— 可以选要
+直链、Markdown、HTML 还是 BBCode。
 
-### 上传
+**照片里的定位信息会在上传前抹掉。** 图床链接是公开的，谁都能看；不抹的话，
+你发进群里的照片会带着拍摄地点一起公开。
 
-- 拖放 / 选择 / ⌘U，批量队列带整体进度，成功即复制链接（URL / Markdown / HTML / BBCode）
-- **上传前抹除定位与设备信息**（EXIF）。图床的链接是公开的，圈里的拍摄地点会跟着一起公开
-- 自动转换 WebP / AVIF，可限制最长边
-- **监控目录**：挂上文件夹后新图自动上传。本地清单防秒传重复扣配额，
-  配额 / 每日上限自动暂停，次日自动恢复
+图片默认转成 WebP 存储，通常小一半，画质看不出差别。也可以选 AVIF 或者保留原格式。
 
-### 图库
+### 挂个文件夹，自动上传
 
-- 分页网格、搜索、多选批量删除、全窗灯箱
-- 右键直接进编辑器
-- **导出全部**到本地目录，已存在的跳过，可中断续传
+选一个文件夹交给它盯着，之后往里放的图会自动传上去。截图存到桌面、
+相机导入到某个目录，都不用再手动拖一次。
 
-### 编辑
+传过的图有记录，不会因为重复上传白扣空间。空间不够或者到了当天上限会自己停下来，
+第二天自动接着传。
 
-裁剪（比例预设）、旋转、马赛克（像素化 / 纯色，**刻意不提供可被复原的高斯模糊**）、
-文字与图片水印、本机智能修图。
+### 传之前先改一下
 
-水印在本机合成后再上传，原图模式下监控目录上传不加水印（那是该模式的承诺），
-动图也不加（逐帧合成不支持）。
+裁剪、旋转、加水印，还有马赛克。
 
-### AI
+马赛克是像素化或者纯色块 —— **不用高斯模糊，因为高斯模糊能被还原出来**。要遮的
+东西就该真的遮住。
 
-- **生成图片**：写一句描述出图，结果自动进图库，和手动上传的图完全一样
-  （去重、外链、短链、备份都有）
-- **修图**：从图库挑 1–4 张或直接拖本地文件，按提示词改图。内置去水印、去除路人杂物、
-  换背景、修复老照片、黑白上色、人像精修等 11 个一键预设
-- **AI 水印**：让模型生成一枚 logo，落地后本机抠背景
-- 生成记录可以删除，删除时可选「只删记录」或「连图一起删」
-- 关联 [pic.bi](https://pic.bi) 后可用 4K 清晰度
+水印可以是文字也可以是图片，位置、大小、透明度都能调。水印在你的 Mac 上就合成好了
+再传，不经过服务器。
 
-### 存储
+### 让 AI 出图、改图
 
-用平台存储池，或绑自己的桶 —— R2 / S3 / B2 / DigitalOcean Spaces / 阿里云 OSS /
-腾讯云 COS，以及任何 S3 兼容的自建服务。凭据加密存储，界面只回显掩码。
+**生成图片**：写一句描述，出图之后自动进图库，和你自己传的图完全一样 ——
+一样有外链、短链、备份。
 
-### 其他
+**修图**：从图库挑几张，或者直接拖本地文件进来，告诉它要改什么。常用的都有一键预设：
 
-- **概览**：配额、存储构成、格式分布、上传趋势、签到日历、空间流水（Swift Charts）
-- **签到**：连续天数、周与月的里程碑奖励。「一天」按你的本地时区算
-- **主题**：绿 `#90FF3A` / 紫 `#7624F4` 两套，与网站同步。切换主题时 Dock 图标跟着换
-- **中英双语**，切换立即生效
+去水印 · 去除路人杂物 · 换背景 · 修复老照片 · 黑白上色 · 人像精修 · 提升清晰度……
 
-## 从源码构建
+关联 [pic.bi](https://pic.bi) 账号之后可以出 4K。
 
-```
-OpenimgKit/
-  Sources/OpenimgKit/     网络层、模型、钥匙串、编辑渲染   ← 为 iOS 复用设计，零依赖
-  Sources/OpenimgMac/     macOS 应用（SwiftUI）
-  Sources/KitCheck/       454 项自检（可执行目标）
-```
+### 找图，管图
 
-```bash
-cd OpenimgKit && swift run KitCheck     # 自检
-./package-mac.sh release                # 打包 .app
-open build/Openimg.app
-```
+图库支持搜索和翻页，多选批量删除，双击全窗看大图。右键可以直接进编辑器。
 
-**不要用 `swift run OpenimgMac`。** 裸可执行文件没有 bundle，SwiftUI 找不到需要
-保活的 scene，进程 exit 0 就没了 —— 不崩溃、不打日志，看上去像什么都没发生。
+**整库导出**：把你传过的所有图一次性下载到本地文件夹。已经下过的自动跳过，
+中断了下次接着来。
 
-构建需要装有 Xcode（SwiftUI 的属性包装宏只随 Xcode 工具链分发；脚本会自动定位
-`/Applications/Xcode.app` 或 `Xcode-beta.app`）。打包和 ad-hoc 签名本身不需要
-Xcode 工程 —— `.app` 只是一个目录加 `Info.plist`。
+### 存到你自己的桶
 
-### 关于自检
+不想用平台的存储池，可以绑自己的：
 
-纯逻辑一律下沉到 `OpenimgKit`，`KitCheck` 才盯得住 —— 布局求解、EXIF 剥离、
-水印合成、格式清单、签到日界都在里面。写在 View 里的计算，454 项自检一项都碰不到。
+Cloudflare R2 · AWS S3 · Backblaze B2 · DigitalOcean Spaces · 阿里云 OSS ·
+腾讯云 COS，以及任何 S3 兼容的自建服务。
 
-## 发布流程（维护者）
+密钥加密保存，界面上只显示掩码。
 
-```bash
-./release.sh v0.3.0
-```
+### 看看用了多少
 
-打包（Developer ID + hardened runtime）→ 公证 → 装订 → 验证 → 建 GitHub Release。
+概览页有剩余空间、存储构成、格式分布、上传趋势和空间流水。
 
-发版说明放在 `release-notes/<版本>.md`，脚本会读它；没有对应文件时退回一句通用说明。
+每天可以签到领空间，连续签到有额外奖励 —— 满一周、满一月各有一次。
 
-**验证这一步会真的启动一次 app**，而且带隔离属性启动 —— 走的是用户下载后的那条路径。
-`spctl` 只查签名与公证，不查受限授权有没有被描述文件授权：v0.2.0 就是这么发出去过一个
-`spctl` 全绿、却谁都打不开的包（AMFI 拒绝加载，报 `Launchd job spawn failed`）。
+## 换个样子
 
-一次性前置（只需做一遍）：
+两套配色，绿和紫，和网站同步。切换主题时 Dock 里的图标也会跟着变。
 
-1. 装 Developer ID Application 证书：Xcode → Settings → Accounts → 选账号 →
-   Manage Certificates… → + → Developer ID Application
-2. 存公证凭据：
-   ```bash
-   xcrun notarytool store-credentials openimg-notary \
-     --apple-id <你的 Apple ID> --team-id <团队 ID>
-   ```
+界面中英双语，切换立即生效。
 
-## 服务端接口
+## 自己搭了服务器？
 
-令牌可达的接口（主仓库 `backend/internal/api/router.go` 的 `machine` 组）：
+登录页可以填自己的服务器地址，连你自己部署的那一套。服务端在
+[gentpan/openimg](https://github.com/gentpan/openimg)。
 
-```
-POST   /api/upload             multipart，字段名固定 file，单文件
-GET    /api/images             limit/offset/q/sort，返回 total
-GET    /api/images/:id
-DELETE /api/images/:id
-POST   /api/images/bulk-delete
-POST   /api/images/:id/variant
-GET    /auth/me                当前令牌属于谁
-GET    /api/quota              档位限制，用于上传前本地拦截
-PATCH  /api/preferences        转换偏好与时区
-GET    /api/ai/status          AI 是否开启、还剩几次
-POST   /api/ai/generate        文生图
-POST   /api/ai/edit            图生图
-GET    /api/ai/generations     生成记录
-DELETE /api/ai/generations/:id 删除一条记录，?image=1 连图一起删
-GET    /api/storage/profiles   存储位置
-POST   /auth/native/exchange   OAuth 回调的一次性 code 换长期令牌
-```
+## 常见问题
 
-账号管理路由（删账号、签发令牌）只认 cookie —— 泄露的令牌不该能删号或再签发令牌。
-`imageOut` 内嵌整个 `models.Image`，后端字段变更需要同步
-`Sources/OpenimgKit/Models.swift`（两仓库拆分后靠这份清单对齐）。
+**打开提示「无法验证开发者」？**
+这个 app 是经过 Apple 公证的，正常不会出现。如果碰到了，多半是下载没下完 ——
+重新下一次。
 
-## 下一步
+**登录之后还要再输密码吗？**
+不用。密码只用来换一枚这台 Mac 专用的凭证，凭证存在钥匙串里，之后自动登录。
+密码本身不会被保存。
 
-- **iOS 端**：Kit 已按两端共用设计（`.iOS(.v17)` 已声明）。阻塞在一个产品决策：
-  App Store 5.1.1(v) 要求 App 内可删账号，而删号是 cookie-only —— 要么 iOS 做
-  cookie 登录，要么不提供登录入口（又会撞 4.2 最低功能性）
-- Sparkle 自动更新（引第三方依赖，与零依赖纪律的取舍待定）
+**退出登录会删掉我的图吗？**
+不会。退出只是让这台设备不再登录，图和账号都还在。
 
-## 更新记录
+**签到的「一天」几点开始？**
+按你电脑的本地时区，从午夜 0 点开始。
 
-见 [CHANGELOG.md](CHANGELOG.md)。
+**支持 Intel 的 Mac 吗？**
+暂时不支持，目前只有 Apple 芯片版本。
 
-## License
+## 其他
 
-[MIT](LICENSE)
+- [更新记录](CHANGELOG.md)
+- [参与开发](DEVELOPMENT.md)
+- [MIT License](LICENSE)
