@@ -3246,6 +3246,65 @@ do {
 }
 
 
+section("上传趋势解码")
+
+do {
+    // 这份 JSON 逐字照着 Go 那边的输出形状写。字段名或类型对不上的话,表现是
+    // 趋势图整块消失、没有任何报错——因为调用点是 `try?`。
+    let json = """
+    {"days":30,"points":[
+      {"date":"2026-08-18","count":26,"bytes":2198746},
+      {"date":"2026-08-19","count":0,"bytes":0}
+    ]}
+    """
+    let dec = JSONDecoder()
+    let t = try? dec.decode(UploadTrend.self, from: Data(json.utf8))
+    check("解得开", t != nil)
+    check("天数解得出", t?.days == 30)
+    check("点数解得出", t?.points.count == 2)
+    check("条数解得出", t?.points.first?.count == 26)
+    check("字节解得出", t?.points.first?.bytes == 2_198_746)
+    // 卡片的显示条件就是这一句。它为假时整张卡不渲染。
+    check("有非零点时卡片条件成立", t?.points.contains(where: { $0.count > 0 }) == true)
+    // 日期要能解成 Date,否则图上一个点都画不出来(卡片还在,图是空的)。
+    check("日期解得成 Date", t?.points.first?.day != nil)
+    check("补零的那天也解得出", t?.points.last?.day != nil)
+}
+
+
+section("请求 URL 拼装")
+
+do {
+    let base = URL(string: "https://openimg.io")!
+    func u(_ p: String, _ q: [URLQueryItem] = []) -> String {
+        OpenimgClient.url(server: base, path: p, query: q).absoluteString
+    }
+
+    check("普通路径", u("api/quota") == "https://openimg.io/api/quota")
+    check("显式查询参数",
+          u("api/stats/uploads", [URLQueryItem(name: "days", value: "30")])
+            == "https://openimg.io/api/stats/uploads?days=30")
+
+    // 这一条钉的是一个真实事故:查询串写在 path 里时,`appendingPathComponent`
+    // 会把 "?" 转义成 "%3F",请求打到一条不存在的路径上,后端的 SPA 兜底回
+    // **200 + HTML**——状态码是成功的,所以没有任何一层会报错,只有 JSON 解码
+    // 失败,而调用点是 `try?`。表现是概览页那张趋势卡整块消失。
+    check("path 里内联查询串不被转义", !u("api/stats/uploads?days=30").contains("%3F"))
+    check("path 里内联查询串拼得对",
+          u("api/stats/uploads?days=30") == "https://openimg.io/api/stats/uploads?days=30")
+    check("内联多个参数", u("api/images?page=2&limit=50")
+            == "https://openimg.io/api/images?page=2&limit=50")
+    check("内联与显式并存", u("api/images?page=2", [URLQueryItem(name: "q", value: "cat")])
+            == "https://openimg.io/api/images?page=2&q=cat")
+    check("值里的空格照样编码",
+          u("api/images", [URLQueryItem(name: "q", value: "a b")])
+            .hasSuffix("q=a%20b"))
+    check("服务器地址带尾斜杠也对",
+          OpenimgClient.url(server: URL(string: "https://openimg.io/")!, path: "api/quota")
+            .absoluteString == "https://openimg.io/api/quota")
+}
+
+
 print("\n\(checks - failures)/\(checks) 通过")
 if failures > 0 {
     print("\(failures) 项失败")

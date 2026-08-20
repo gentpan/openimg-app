@@ -10,6 +10,8 @@ struct OverviewStrings: Sendable {
     let trendDay: String
     let trendCount: String
     let trendNote: @Sendable (Int) -> String
+    let trendFailed: String
+    let trendEmpty: String
     // 配额
     let quotaTitle: String
     let quotaAvailable: String
@@ -69,6 +71,8 @@ extension OverviewStrings {
         trendDay: "日期",
         trendCount: "张数",
         trendNote: { n in "最近 30 天共 \(n) 张" },
+        trendFailed: "取不到上传趋势",
+        trendEmpty: "最近 30 天还没有上传",
         quotaTitle: "空间",
         quotaAvailable: "可用",
         quotaUsed: { size in "已用 \(size)" },
@@ -129,6 +133,8 @@ extension OverviewStrings {
         trendDay: "Day",
         trendCount: "Images",
         trendNote: { n in "\(n) uploads in the last 30 days" },
+        trendFailed: "Could not load upload activity",
+        trendEmpty: "No uploads in the last 30 days",
         quotaTitle: "Storage",
         quotaAvailable: "available",
         quotaUsed: { size in "\(size) used" },

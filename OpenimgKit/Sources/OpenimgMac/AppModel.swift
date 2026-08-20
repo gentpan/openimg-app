@@ -78,6 +78,11 @@ final class AppModel: ObservableObject {
     @Published var quota: Quota?
     /// 按天的上传趋势。来自服务端,不是拿图库当前页聚合的。
     @Published var uploadTrend: UploadTrend?
+    /// 取趋势失败的原因。
+    ///
+    /// 留着而不是丢掉:原来失败就整张卡消失,而"卡片不见了"和"这段时间没上传"
+    /// 在界面上长得一模一样——一个不报错的失败模式,查起来极贵。宁可把话说出来。
+    @Published var uploadTrendError: String?
 
     /// 更新检查。独立的对象而不是一堆 @Published 散在这里:它有自己的状态机,
     /// 而且和账号、图库完全无关——没登录也该能查更新。
@@ -832,12 +837,18 @@ final class AppModel: ObservableObject {
         // 存储位置也一并取。概览的存储卡要它,而它原来只在设置页拉——冷启动
         // 直接进概览时那张卡会空着,而空着的原因是"没人去取",不是"没有数据"。
         async let sp = try? await c.storageProfiles()
-        async let tr = try? await c.uploadTrend(days: 30)
+        async let tr = Result { try await c.uploadTrend(days: 30) }
         summary = await sum
         transactions = await tx?.transactions ?? []
         checkins = await ck ?? []
         storageProfiles = await sp ?? []
-        uploadTrend = await tr
+        switch await tr {
+        case .success(let t):
+            uploadTrend = t
+            uploadTrendError = nil
+        case .failure(let e):
+            uploadTrendError = e.localizedDescription
+        }
     }
 
     func checkin() async {

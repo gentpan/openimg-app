@@ -49,10 +49,35 @@ public struct OpenimgClient: Sendable {
 
     // MARK: - Requests
 
+    /// 把服务器地址、路径和查询参数拼成一个 URL。
+    ///
+    /// 单独拎出来是为了**测得到**。它原来长在 `request` 里,而 `request` 是私有
+    /// 的、还要带上鉴权头,于是这段唯一会出错的逻辑一行自检都没有。
+    ///
+    /// path 里带 "?" 也要能用。`appendingPathComponent` 会把 "?" 转义成 "%3F"
+    /// 并入路径,不报错也不警告——请求打到 `/api/x%3Fdays=30`,后端没有这条路由,
+    /// 于是落进 SPA 兜底,回来的是 **200 加一整页 HTML**。状态码是成功的,所以
+    /// 每一层都觉得没事,只有解码那一步失败,而调用点通常写着 `try?`。这个失败
+    /// 模式的表现是"某张卡片凭空消失",查起来极贵——已经吃过一次。
+    ///
+    /// 与其立个"别这么写"的规矩,不如让这么写是对的。
+    public static func url(server: URL, path: String, query: [URLQueryItem] = []) -> URL {
+        var head = path
+        var inline: [URLQueryItem] = []
+        if let q = path.firstIndex(of: "?") {
+            head = String(path[path.startIndex..<q])
+            let tail = String(path[path.index(after: q)...])
+            inline = URLComponents(string: "?" + tail)?.queryItems ?? []
+        }
+        var comps = URLComponents(url: server.appendingPathComponent(head),
+                                  resolvingAgainstBaseURL: false)!
+        let all = inline + query
+        if !all.isEmpty { comps.queryItems = all }
+        return comps.url!
+    }
+
     private func request(_ method: String, _ path: String, query: [URLQueryItem] = []) -> URLRequest {
-        var comps = URLComponents(url: server.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
-        if !query.isEmpty { comps.queryItems = query }
-        var req = URLRequest(url: comps.url!)
+        var req = URLRequest(url: Self.url(server: server, path: path, query: query))
         req.httpMethod = method
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -75,7 +100,35 @@ public struct OpenimgClient: Sendable {
         do {
             return try dec.decode(T.self, from: data)
         } catch {
-            throw OpenimgError.transport("响应解析失败：\(error.localizedDescription)")
+            throw OpenimgError.transport("响应解析失败：\(Self.describe(error))")
+        }
+    }
+
+    /// 把解码错误说成人能照着查的话。
+    ///
+    /// `DecodingError.localizedDescription` 一律是"数据格式不对",不说是哪个字段、
+    /// 也不说期望什么——拿着它排查等于从零开始。而这类错误最常见的成因恰恰是
+    /// 服务端改了一个字段名或类型,那正是 codingPath 一眼能指出来的东西。
+    static func describe(_ error: Error) -> String {
+        guard let e = error as? DecodingError else { return error.localizedDescription }
+        func path(_ c: [CodingKey]) -> String {
+            c.map { $0.intValue.map { i in "[\(i)]" } ?? ".\($0.stringValue)" }
+                .joined().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        }
+        switch e {
+        case .keyNotFound(let k, let ctx):
+            return "缺字段 \(path(ctx.codingPath + [k]))"
+        case .typeMismatch(let t, let ctx):
+            return "字段 \(path(ctx.codingPath)) 类型不对，期望 \(t)"
+        case .valueNotFound(let t, let ctx):
+            return "字段 \(path(ctx.codingPath)) 是空的，期望 \(t)"
+        case .dataCorrupted(let ctx):
+            // 整体不是 JSON 时 codingPath 是空的——多半是拿到了 HTML 兜底页。
+            return ctx.codingPath.isEmpty
+                ? "响应不是 JSON（\(ctx.debugDescription)）"
+                : "字段 \(path(ctx.codingPath)) 的值不合法"
+        @unknown default:
+            return error.localizedDescription
         }
     }
 
@@ -438,8 +491,18 @@ public struct OpenimgClient: Sendable {
 
     /// 按天的上传趋势,默认 30 天(服务端夹在 7…90)。
     public func uploadTrend(days: Int = 30) async throws -> UploadTrend {
-        let (data, resp) = try await session.data(
-            for: request("GET", "api/stats/uploads?days=\(days)"))
+        var req = request("GET", "api/stats/uploads",
+                          query: [URLQueryItem(name: "days", value: String(days))])
+        // 绕开本地缓存。
+        //
+        // 服务端已经改成 no-store,但**共享缓存里存着的旧校验器清不掉**——那条
+        // 记录会继续发条件请求,拿回 304 和空 body。而 decode 只接受 2xx,于是
+        // 趋势图整块消失、没有任何报错。这一行让它永远走真请求。
+        //
+        // 代价是每次进概览多一次几百字节的往返,而这份数据每传一张图就变,
+        // 缓存它本来也换不来什么。
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, resp) = try await session.data(for: req)
         return try decode(UploadTrend.self, data, resp)
     }
 

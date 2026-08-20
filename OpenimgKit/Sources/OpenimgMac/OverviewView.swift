@@ -80,7 +80,20 @@ struct OverviewView: View {
     /// 分得开。
     @ViewBuilder private var trendCard: some View {
         let points = model.uploadTrend?.points ?? []
-        if points.contains(where: { $0.count > 0 }) {
+        if let why = model.uploadTrendError {
+            // 说出来,别消失。
+            PanelCard(L.s.overview.trendTitle, "chart.xyaxis.line") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L.s.overview.trendFailed).font(.caption).foregroundStyle(.secondary)
+                    Text(why).font(.caption2).foregroundStyle(.tertiary).lineLimit(3)
+                }
+            }
+        } else if model.uploadTrend != nil && !points.contains(where: { $0.count > 0 }) {
+            // 取到了,但这 30 天确实一张都没传。这与"取不到"是两回事,要分开说。
+            PanelCard(L.s.overview.trendTitle, "chart.xyaxis.line") {
+                Text(L.s.overview.trendEmpty).font(.caption).foregroundStyle(.tertiary)
+            }
+        } else if points.contains(where: { $0.count > 0 }) {
             PanelCard(L.s.overview.trendTitle, "chart.xyaxis.line", fills: true) {
                 Chart(points) { p in
                     if let day = p.day {
