@@ -45,6 +45,21 @@ struct OverviewStrings: Sendable {
     let txLabel: @Sendable (String) -> String
 
     let emptyState: String
+    let storageTitle: String
+    let storageDefault: String
+    let storageImages: @Sendable (Int) -> String
+    let storageMirrors: @Sendable (Int) -> String
+    let storageFellBack: String
+    let storageFailing: String
+    let storageRemoved: String
+    let aiTitle: String
+    let aiTimes: String
+    let aiToday: String
+    let aiMonthly: String
+    let aiFromPicbi: String
+    let aiPicbiUnknown: String
+    let aiMonthlyOut: String
+    let aiDailyOut: String
 }
 
 extension OverviewStrings {
@@ -91,7 +106,22 @@ extension OverviewStrings {
             }
         },
 
-        emptyState: "暂无数据")
+        emptyState: "暂无数据",
+        storageTitle: "存储位置",
+        storageDefault: "默认",
+        storageImages: { n in "\(n) 张" },
+        storageMirrors: { n in "\(n) 个镜像" },
+        storageFellBack: "这个位置连不上，新图已经暂时改存平台池",
+        storageFailing: "上次检查没连上",
+        storageRemoved: "位置已删除，这些图的字节还记在它名下",
+        aiTitle: "AI 余量",
+        aiTimes: "次",
+        aiToday: "今天已用",
+        aiMonthly: "本月剩余",
+        aiFromPicbi: "来自 pic.bi",
+        aiPicbiUnknown: "这次没查到",
+        aiMonthlyOut: "本月额度用完了，签到可以再领。",
+        aiDailyOut: "今天的次数用完了，明天再来。")
 
     static let en = OverviewStrings(
         recentTitle: "Recent uploads",
@@ -136,5 +166,20 @@ extension OverviewStrings {
             }
         },
 
-        emptyState: "No data yet")
+        emptyState: "No data yet",
+        storageTitle: "Where your images live",
+        storageDefault: "Default",
+        storageImages: { n in "\(n) images" },
+        storageMirrors: { n in "\(n) mirror(s)" },
+        storageFellBack: "This bucket is unreachable — new uploads are going to the platform pool for now",
+        storageFailing: "Last check could not reach it",
+        storageRemoved: "Location deleted; these bytes are still counted against it",
+        aiTitle: "AI allowance",
+        aiTimes: "left",
+        aiToday: "Used today",
+        aiMonthly: "Left this month",
+        aiFromPicbi: "from pic.bi",
+        aiPicbiUnknown: "not available",
+        aiMonthlyOut: "This month's allowance is used up — check in to earn more.",
+        aiDailyOut: "Today's runs are used up. Try again tomorrow.")
 }

@@ -827,9 +827,13 @@ final class AppModel: ObservableObject {
         async let sum = try? await c.storageSummary()
         async let tx = try? await c.transactions(limit: 50)
         async let ck = try? await c.checkinHistory(limit: 130)
+        // 存储位置也一并取。概览的存储卡要它,而它原来只在设置页拉——冷启动
+        // 直接进概览时那张卡会空着,而空着的原因是"没人去取",不是"没有数据"。
+        async let sp = try? await c.storageProfiles()
         summary = await sum
         transactions = await tx?.transactions ?? []
         checkins = await ck ?? []
+        storageProfiles = await sp ?? []
     }
 
     func checkin() async {

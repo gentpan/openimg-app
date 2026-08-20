@@ -263,3 +263,81 @@ public let aiPromptLimit = 1000
 /// 上限;本地先拦是为了让「加图」按钮在第 4 张之后就消失,而不是让人选到第
 /// 5 张再被 400 打回来。
 public let aiEditSourceLimit = 4
+
+/// 概览页那张 AI 卡要显示的东西。
+///
+/// 存在的理由是「三本账不能摆成一池」:今日次数、本月额度、pic.bi 余额是三个
+/// 互不相通的池子,而用完之后的解法也不同——今日用完只能等明天,本月用完可以去
+/// 签到,pic.bi 用完要去那边充。混在一起显示,用户会以为总数是它们的和。
+public struct AIQuotaReadout: Sendable, Equatable {
+    /// 最大的那个数字:这一刻还能生成几次。
+    public let headline: Int
+    /// headline 是不是来自 pic.bi(本地额度已经见底)。
+    public let fromPicbi: Bool
+    public let usedToday: Int
+    public let dailyLimit: Int
+    /// 本月剩余与配给量。剩余可能大于配给量——签到会往上加。
+    public let monthlyLeft: Int
+    public let monthlyTotal: Int
+    public let picbi: PicbiBalance
+    /// 现在为什么不能生成。nil 表示能生成。
+    public let blocked: Blocked?
+
+    public enum PicbiBalance: Sendable, Equatable {
+        /// 没关联。
+        case none
+        case known(Int)
+        /// 关联了,但这次没查到余额。
+        ///
+        /// **必须与 known(0) 分开。** 显示成 0 会让人以为钱花光了,而实际上只是
+        /// 对端抖了一下;这两种情况用户要做的事完全相反(一个去充值,一个等一会
+        /// 儿再试)。
+        case unknown
+    }
+
+    public enum Blocked: Sendable, Equatable {
+        /// 今天的次数用完了,等明天。
+        case daily
+        /// 本月额度用完了,去签到。
+        case monthly
+    }
+
+    public init(_ s: AIStatus) {
+        usedToday = s.usedToday
+        dailyLimit = s.dailyLimit
+        monthlyLeft = s.credits
+        monthlyTotal = max(s.monthly, s.credits)
+
+        picbi = {
+            guard s.picbiLinked else { return .none }
+            guard let n = s.picbiCredits else { return .unknown }
+            return .known(n)
+        }()
+
+        let dailyLeft = max(0, s.dailyLimit - s.usedToday)
+        let localLeft = s.remaining
+
+        if localLeft > 0 {
+            headline = localLeft
+            fromPicbi = false
+            blocked = nil
+        } else if case .known(let n) = picbi, n > 0 {
+            // 本地见底但 pic.bi 还有:那就还能生成,只是花的是另一本账的钱。
+            headline = n
+            fromPicbi = true
+            blocked = nil
+        } else if case .unknown = picbi {
+            // 查不到余额时不该拦人:也许有钱。让他点,真不行由接口报错——
+            // 比在这里猜一个"没有"要诚实。
+            headline = 0
+            fromPicbi = false
+            blocked = nil
+        } else {
+            headline = 0
+            fromPicbi = false
+            // 本月和今日同时用尽时报「本月」。两者的解法不同,而本月那条是用户
+            // 现在就能动手的(去签到),今日那条只能等——先说能动手的那个。
+            blocked = s.credits <= 0 ? .monthly : (dailyLeft <= 0 ? .daily : .monthly)
+        }
+    }
+}

@@ -21,13 +21,16 @@ struct OverviewView: View {
     /// 分组:先「我还剩多少」(空间、签到),再「东西长什么样」(构成、格式),
     /// 最后「最近发生了什么」(最近上传、趋势、流水)。
     private enum CardID: String, Hashable, Sendable {
-        case quota, checkin, composition, format, recent, activity
+        case quota, ai, checkin, storage, composition, format, recent, activity
     }
 
     private var cards: [BoardCard<CardID>] {
         [
             BoardCard(.quota),
+            // AI 与空间对称:同为"我还剩多少"。
+            BoardCard(.ai),
             BoardCard(.checkin),
+            BoardCard(.storage),
             BoardCard(.composition),
             BoardCard(.format),
             // 唯一真吃宽度的卡:三列档跨两格,缩略图从 4 列变 6 列。
@@ -44,7 +47,9 @@ struct OverviewView: View {
         CardBoard(cards: cards) { id in
             switch id {
             case .quota:       quotaCard
+            case .ai:          AIQuotaCard(model: model)
             case .checkin:     checkinCard
+            case .storage:     StorageCard(model: model)
             case .composition: compositionCard
             case .format:      formatCard
             case .recent:      recentCard

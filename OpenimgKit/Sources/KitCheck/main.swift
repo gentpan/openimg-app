@@ -2993,6 +2993,192 @@ do {
 }
 
 
+section("存储位置 · 种类识别")
+
+do {
+    // 后端发的是 user_r2 / user_s3,不是 r2 / s3。认错的表现是界面上原样打印
+    // 出 `user_r2` —— 不报错、不留痕。
+    check("user_r2 认得出", StorageKind.parse("user_r2") == .r2)
+    check("platform 认得出", StorageKind.parse("platform") == .platform)
+    check("unknown 是已移除", StorageKind.parse("unknown") == .removed)
+    check("空串是已移除", StorageKind.parse("") == .removed)
+    // 非 R2 的自有桶后端一律记 user_s3,要靠 endpoint 再分一次。
+    check("user_s3 + R2 端点 → R2",
+          StorageKind.parse("user_s3", endpoint: "abc.r2.cloudflarestorage.com") == .r2)
+    check("user_s3 + AWS 端点 → S3",
+          StorageKind.parse("user_s3", endpoint: "s3.us-west-2.amazonaws.com") == .s3)
+    check("user_s3 + 阿里云端点 → OSS",
+          StorageKind.parse("user_s3", endpoint: "oss-cn-hangzhou.aliyuncs.com") == .oss)
+    check("user_s3 + 腾讯云端点 → COS",
+          StorageKind.parse("user_s3", endpoint: "cos.ap-nanjing.myqcloud.com") == .cos)
+    check("平台池没有徽章", StorageKind.platform.badge == nil)
+    check("R2 有徽章", StorageKind.r2.badge == "R2")
+}
+
+section("存储位置 · 合并")
+
+do {
+    // 从 JSON 解而不是用成员初始化器:这两个类型只有 Decodable,跨模块拿不到
+    // 成员构造器。为测试加一个公开构造器等于扩大公开面,而从 JSON 解还顺带把
+    // 真实的解码路径也走了一遍——键名写错在这里就会暴露。
+    func profile(_ id: String, kind: String = "user_s3", name: String = "桶",
+                 endpoint: String = "", isDefault: Bool = false, status: String = "active",
+                 backupOf: String? = nil, bytes: Int64 = 0, images: Int64 = 0) -> StorageProfile {
+        let backup = backupOf.map { "\"\($0)\"" } ?? "null"
+        let json = """
+        {"id":"\(id)","kind":"\(kind)","name":"\(name)","endpoint":"\(endpoint)",
+         "region":"auto","bucket":"b","key_prefix":"","path_style":false,
+         "access_key_mask":"","public_base_url":"","is_default":\(isDefault),
+         "is_platform":\(kind == "platform"),"backup_of_id":\(backup),
+         "status":"\(status)","last_error":null,
+         "image_count":\(images),"stored_bytes":\(bytes)}
+        """
+        return try! JSONDecoder().decode(StorageProfile.self, from: Data(json.utf8))
+    }
+    func slice(_ id: String, kind: String = "user_s3", name: String = "切片",
+               bytes: Int64 = 0, images: Int = 0) -> StorageSummarySlice {
+        let json = """
+        {"id":"\(id)","name":"\(name)","kind":"\(kind)","bytes":\(bytes),"images":\(images)}
+        """
+        return try! JSONDecoder().decode(StorageSummarySlice.self, from: Data(json.utf8))
+    }
+    let zeroUUID = "00000000-0000-0000-0000-000000000000"
+
+    // 后端在没有平台 profile 行时,把 profile_id 为空的图归为平台并发一个全零
+    // UUID。按 id 直接合并会画出两行「平台存储」。
+    do {
+        let rows = StorageOverview.slots(
+            profiles: [profile("p1", kind: "platform", name: "平台", bytes: 100, images: 1)],
+            byProfile: [slice(zeroUUID, kind: "platform", bytes: 50, images: 2)])
+        check("全零 UUID 的平台切片并进平台行,不另起一行", rows.count == 1)
+        check("并进去之后字节相加", rows.first?.bytes == 150)
+        check("张数也相加", rows.first?.images == 3)
+    }
+
+    // 两个来源说的是同一批字节,取一份而不是相加。相加的表现是用量凭空翻倍。
+    do {
+        let rows = StorageOverview.slots(
+            profiles: [profile("p1", bytes: 100, images: 5)],
+            byProfile: [slice("p1", bytes: 100, images: 5)])
+        check("同 id 时字节取 profiles,不相加", rows.first?.bytes == 100)
+    }
+
+    // 备份桶不是"图存在哪",是"图还多存了一份"。
+    do {
+        let rows = StorageOverview.slots(
+            profiles: [profile("p1", bytes: 100), profile("m1", backupOf: "p1", bytes: 100)],
+            byProfile: [])
+        check("备份桶不单独成行", rows.count == 1)
+        check("备份桶记在父行上", rows.first?.mirrors == 1)
+        check("备份桶的字节不计入父行", rows.first?.bytes == 100)
+    }
+    do {
+        // 父行不存在的孤儿备份桶直接丢弃——列出来会让人以为图存在那儿。
+        let rows = StorageOverview.slots(profiles: [profile("m1", backupOf: "gone")], byProfile: [])
+        check("孤儿备份桶被丢弃", rows.isEmpty)
+    }
+
+    // 位置删了但字节还在。
+    do {
+        let rows = StorageOverview.slots(
+            profiles: [profile("p1", bytes: 100)],
+            byProfile: [slice("gone", kind: "unknown", name: "已删除的位置", bytes: 30)])
+        check("已删位置单独成行", rows.count == 2)
+        check("已删位置标成 removed", rows.first(where: { $0.id == "gone" })?.health == .removed)
+    }
+
+    // 默认位置探针失败 = 新上传已经回落到平台池,与"某个非默认桶连不上"是两件事。
+    do {
+        let a = StorageOverview.slots(
+            profiles: [profile("p1", isDefault: true, status: "invalid")], byProfile: [])
+        check("默认位置失效 → 回落", a.first?.health == .fallenBack(nil))
+        let b = StorageOverview.slots(
+            profiles: [profile("p1", status: "invalid")], byProfile: [])
+        check("非默认位置失效 → 仅失败", b.first?.health == .failing(nil))
+    }
+
+    // 排序:默认置顶(它回答"我下一张图存到哪"),然后自有桶按量,平台在后,已删最后。
+    do {
+        let rows = StorageOverview.slots(
+            profiles: [profile("plat", kind: "platform", bytes: 999),
+                       profile("small", bytes: 10),
+                       profile("big", bytes: 500),
+                       profile("def", isDefault: true, bytes: 1)],
+            byProfile: [slice("gone", kind: "unknown", bytes: 5)])
+        check("默认置顶", rows.first?.id == "def")
+        check("自有桶按字节降序", rows[1].id == "big" && rows[2].id == "small")
+        check("平台池排在自有桶之后", rows[3].id == "plat")
+        check("已移除排最后", rows.last?.id == "gone")
+    }
+
+    // 总量为 0 时占比给 0 而不是 NaN。NaN 传进 SwiftUI 的宽度会让整行不渲染,
+    // 看着像卡片坏了。
+    do {
+        let rows = StorageOverview.slots(profiles: [profile("p1", bytes: 0)], byProfile: [])
+        check("总量为 0 时占比是 0 而不是 NaN",
+              rows.first?.share == 0 && !(rows.first?.share.isNaN ?? true))
+    }
+    do {
+        let rows = StorageOverview.slots(
+            profiles: [profile("a", bytes: 75), profile("b", bytes: 25)], byProfile: [])
+        check("占比算得对", abs((rows.first?.share ?? 0) - 0.75) < 0.001)
+        check("占比之和为 1", abs(rows.reduce(0) { $0 + $1.share } - 1) < 0.001)
+    }
+
+    check("两边都空时没有行", StorageOverview.slots(profiles: [], byProfile: []).isEmpty)
+}
+
+section("AI 余量读数")
+
+do {
+    // 同样从 JSON 解:AIStatus 只有 Decodable。
+    func status(credits: Int = 50, usedToday: Int = 0, dailyLimit: Int = 5,
+                monthly: Int = 50, remaining: Int = 5,
+                linked: Bool = false, picbi: Int? = nil) -> AIStatus {
+        let pc = picbi.map(String.init) ?? "null"
+        let json = """
+        {"enabled":true,"credits":\(credits),"used_today":\(usedToday),
+         "daily_limit":\(dailyLimit),"monthly":\(monthly),"remaining":\(remaining),
+         "sizes":[],"resolutions":[],"picbi_linked":\(linked),"picbi_credits":\(pc)}
+        """
+        return try! JSONDecoder().decode(AIStatus.self, from: Data(json.utf8))
+    }
+
+    check("有余额时显示本地剩余", AIQuotaReadout(status()).headline == 5)
+    check("有余额时不标 pic.bi", AIQuotaReadout(status()).fromPicbi == false)
+
+    // 关联了但查不到余额,必须与「余额为 0」分开:显示 0 会让人以为钱花光了,
+    // 而实际只是对端抖了一下。
+    check("关联但查不到 → unknown 而不是 known(0)",
+          AIQuotaReadout(status(linked: true)).picbi == .unknown)
+    check("没关联 → none(即使 credits 有值)",
+          AIQuotaReadout(status(linked: false, picbi: 9)).picbi == .none)
+    check("关联且查到 → known", AIQuotaReadout(status(linked: true, picbi: 9)).picbi == .known(9))
+
+    // 本地见底但 pic.bi 还有:还能生成,只是花另一本账的钱。
+    do {
+        let r = AIQuotaReadout(status(credits: 0, remaining: 0, linked: true, picbi: 7))
+        check("本地见底而 pic.bi 有余额 → 用它的数", r.headline == 7)
+        check("并标明来自 pic.bi", r.fromPicbi)
+        check("此时不算被拦住", r.blocked == nil)
+    }
+    // 查不到余额时不该拦人:也许有钱,让他点,真不行由接口报错。
+    check("本地见底而 pic.bi 查不到 → 不拦",
+          AIQuotaReadout(status(credits: 0, remaining: 0, linked: true)).blocked == nil)
+
+    // 两者同时用尽时报「本月」——它是用户现在就能动手的那条(去签到),
+    // 今日那条只能等。
+    check("本月与今日同时用尽 → 报本月",
+          AIQuotaReadout(status(credits: 0, usedToday: 5, remaining: 0)).blocked == .monthly)
+    check("只有今日用尽 → 报今日",
+          AIQuotaReadout(status(credits: 30, usedToday: 5, remaining: 0)).blocked == .daily)
+
+    // 签到会把余额加到超过月配给量,进度条不能因此超过 1。
+    check("签到加过之后总量取较大的那个",
+          AIQuotaReadout(status(credits: 80, monthly: 50)).monthlyTotal == 80)
+}
+
+
 print("\n\(checks - failures)/\(checks) 通过")
 if failures > 0 {
     print("\(failures) 项失败")
