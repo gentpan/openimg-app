@@ -238,6 +238,19 @@ struct Sidebar: View {
             account
         }
         .padding(.top, 42) // clears the traffic lights
+        // 搜索框默认**不**带光标,点了才聚焦。
+        //
+        // 它是窗口里第一个文本框,AppKit 在窗口成为 key 时自动把第一响应者给
+        // 它——于是每次打开 app,侧栏搜索框都亮着一根闪烁的光标,像是在催人
+        // 打字。defaultFocus 声明它不参与默认焦点;下面那句是兜底:初始第一
+        // 响应者的指派发生在 SwiftUI 焦点系统接管之前,单靠声明有时拦不住,
+        // 启动后把响应者退掉一次才保险。只在出现时做一次,不影响之后的点击。
+        .defaultFocus($searchFocused, false)
+        .onAppear {
+            DispatchQueue.main.async {
+                NSApp.keyWindow?.makeFirstResponder(nil)
+            }
+        }
     }
 
     /// Search lives here rather than in the toolbar.
