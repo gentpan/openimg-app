@@ -435,8 +435,16 @@ final class AppModel: ObservableObject {
     var connected: Bool { account != nil }
     var pageCount: Int { max(1, Int(ceil(Double(total) / Double(pageSize)))) }
 
+    /// 启动时钥匙串里有令牌、但还没跟服务器核完。
+    ///
+    /// 这段时间(一次网络往返)里 account 还是 nil,而 RootView 只认 connected
+    /// ——不加这个状态,每次打开 app 都要先闪一下登录页,再跳回主界面。对一个
+    /// 每天都登录着的用户,那一闪读作"我被登出了?"。
+    @Published var restoring = false
+
     init() {
         token = store.load(server: server) ?? ""
+        restoring = !token.isEmpty
         // 水印图从磁盘读一次就常驻。同步读:它最多 1024px 见方的 PNG,而
         // 异步读的代价是启动那一瞬间设置页会显示"还没设过水印图",然后突然
         // 冒出一枚——看起来像是刚被谁设上去的。
@@ -495,6 +503,7 @@ final class AppModel: ObservableObject {
     }
 
     func restore() async {
+        defer { restoring = false }
         guard !token.isEmpty else { section = .settings; return }
         await connect(quiet: true)
         if !connected { section = .settings }

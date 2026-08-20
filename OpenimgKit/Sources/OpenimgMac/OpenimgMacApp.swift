@@ -64,7 +64,11 @@ struct RootView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            if model.connected {
+            // restoring 也走主界面:钥匙串里有令牌,几乎可以肯定这次能连上,
+            // 各页自己的占位符会顶住验证的那几百毫秒。令牌真失效时 restoring
+            // 落回 false、connected 仍是 false,这里自然换到登录页——那才是
+            // 该看到登录页的时刻。
+            if model.connected || model.restoring {
                 HStack(spacing: 0) {
                     // 入场顺序 = 视觉层级:侧栏 → 顶栏 → 卡片(从上到下)。
                     // 顺序本身就是在替眼睛排落点。
