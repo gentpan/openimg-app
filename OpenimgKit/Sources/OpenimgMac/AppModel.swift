@@ -383,6 +383,12 @@ final class AppModel: ObservableObject {
     // Upload
     @Published var uploading = false
     @Published var queue: [UploadItem] = []
+    /// 正在从网址取的图。与 queue 分开:它们还没成为"待上传的文件",取完才进
+    /// 队列;混在一起的话队列里会出现一种没有本地文件的行,每处用到 url 的地
+    /// 方都要多一个判空。
+    @Published var fetches: [RemoteFetch] = []
+    /// 网址输入框里的内容。
+    @Published var urlDraft = ""
     @Published var dropping = false
 
     /// Overall progress across the batch, weighted by file size — a 40 KB icon
@@ -1372,6 +1378,145 @@ final class AppModel: ObservableObject {
     /// Worth doing locally because the daily upload count is consumed by the
     /// attempt, not by the success: learning from a 415 that HEIC is not in
     /// your tier costs one of the day's allowance either way.
+    // MARK: - 网址取图与粘贴
+
+    /// 正在下载的一条。
+    struct RemoteFetch: Identifiable {
+        let id = UUID()
+        let url: URL
+        var received: Int64 = 0
+        /// 对方没给 Content-Length 时是 -1。别拿它当分母。
+        var total: Int64 = -1
+        /// 失败原因。留着而不是让这一行消失——一闪而过的失败等于没报错。
+        var failed: String?
+
+        var fraction: Double? {
+            guard total > 0 else { return nil }
+            return min(1, max(0, Double(received) / Double(total)))
+        }
+        var name: String {
+            let last = url.lastPathComponent
+            return last.isEmpty || last == "/" ? (url.host ?? url.absoluteString) : last
+        }
+    }
+
+    private var fetchTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// 下载落地的地方。放自己的子目录里,便于收尾时整块清掉。
+    private var remoteDir: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("openimg-remote", isDirectory: true)
+    }
+
+    /// 从一条网址取图,取完直接进上传队列。
+    func fetchFromURL(_ raw: String) {
+        guard let url = RemoteImageURL.parse(raw) else {
+            announce(L.s.upload.urlBad)
+            return
+        }
+        urlDraft = ""
+        let item = RemoteFetch(url: url)
+        fetches.append(item)
+        let id = item.id
+        // 上限用用户组的单文件上限。为了发现"太大了"把 2 GB 拉完是没必要的,
+        // RemoteDownload 会在 Content-Length 或者累计字节超了的时候当场掐断。
+        let cap = quota?.tier.maxFileSize ?? 0
+        let dir = remoteDir
+
+        fetchTasks[id] = Task { @MainActor in
+            // 强捕获 self:任务是短命的,而 defer 一定会把它从 fetchTasks 里摘
+            // 掉,循环引用活不过这一次下载。用 weak 反而写不出来——进度回调里
+            // 再套一层 weak 就成了"在并发闭包里引用被捕获的 var self"。
+            defer { self.fetchTasks[id] = nil }
+            do {
+                let file = try await RemoteDownload.fetch(url, into: dir, maxBytes: cap) { p in
+                    Task { @MainActor in self.applyFetchProgress(id, p) }
+                }
+                guard !Task.isCancelled else {
+                    try? FileManager.default.removeItem(at: file)
+                    return
+                }
+                self.fetches.removeAll { $0.id == id }
+                _ = await self.upload([file])
+                // 上传路径不删来源文件(拖进来的是用户自己的图),但这一份是我们
+                // 下的,不清就会在临时目录里一直堆着。
+                try? FileManager.default.removeItem(at: file)
+            } catch {
+                guard !Task.isCancelled else { return }
+                if let k = self.fetches.firstIndex(where: { $0.id == id }) {
+                    self.fetches[k].failed = (error as? LocalizedError)?.errorDescription
+                        ?? error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func applyFetchProgress(_ id: UUID, _ p: RemoteDownload.Progress) {
+        guard let k = fetches.firstIndex(where: { $0.id == id }) else { return }
+        fetches[k].received = p.received
+        fetches[k].total = p.total
+    }
+
+    /// 取消或收起一条。
+    func dropFetch(_ id: UUID) {
+        fetchTasks[id]?.cancel()
+        fetchTasks[id] = nil
+        fetches.removeAll { $0.id == id }
+    }
+
+    /// 粘贴板里有什么就上传什么。
+    ///
+    /// 三种来源按"最明确"到"最含糊"依次试:拷贝的文件 → 位图数据 → 一段看着
+    /// 像网址的文字。顺序反过来的话,从 Finder 拷贝的图片会因为剪贴板上同时挂
+    /// 着一份文件名字符串而被当成网址去请求。
+    func pasteAndUpload() async {
+        let pb = NSPasteboard.general
+
+        if let urls = pb.readObjects(forClasses: [NSURL.self],
+                                     options: [.urlReadingFileURLsOnly: true]) as? [URL],
+           !urls.isEmpty {
+            await handleDrop(urls)
+            return
+        }
+
+        if let file = pasteboardImageFile(pb) {
+            _ = await upload([file])
+            try? FileManager.default.removeItem(at: file)
+            return
+        }
+
+        if let text = pb.string(forType: .string), RemoteImageURL.parse(text) != nil {
+            fetchFromURL(text)
+            return
+        }
+
+        announce(L.s.upload.pasteEmpty)
+    }
+
+    /// 把剪贴板上的位图落成一个临时文件。
+    ///
+    /// 优先拿 PNG 原样落盘;只有 TIFF 时才转一次——截图和多数应用给的都是 PNG,
+    /// 无条件走 NSImage 转码等于给每一次粘贴白付一次重编码。
+    private func pasteboardImageFile(_ pb: NSPasteboard) -> URL? {
+        var data = pb.data(forType: .png)
+        var ext = "png"
+        if data == nil, let tiff = pb.data(forType: .tiff) {
+            data = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
+            ext = "png"
+        }
+        guard let data, !data.isEmpty else { return nil }
+
+        let stamp = Int(Date().timeIntervalSince1970)
+        let dir = remoteDir
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("pasted-\(stamp).\(ext)")
+        do {
+            try data.write(to: file)
+            return file
+        } catch {
+            return nil
+        }
+    }
+
     func rejectLocally(_ url: URL) -> String? {
         guard let tier = quota?.tier else { return nil }
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0

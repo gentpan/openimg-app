@@ -19,6 +19,17 @@ struct UploadStrings: Sendable {
     let uploadingBusy: String
     let clearList: String
 
+    // 网址取图 / 粘贴
+    let urlPlaceholder: String
+    let urlFetch: String
+    let pasteButton: String
+    let pasteEmpty: String
+    let urlBad: String
+    let fetching: String
+    let fetchingUnknownSize: @Sendable (String) -> String
+    let cancelFetch: String
+    let dismissFetch: String
+
     // 链接格式
     let copyAfterUpload: String
 
@@ -56,6 +67,15 @@ extension UploadStrings {
         uploadingBusy: "上传中…",
         clearList: "清空列表",
 
+        urlPlaceholder: "粘贴图片网址，回车取图",
+        urlFetch: "取图",
+        pasteButton: "粘贴",
+        pasteEmpty: "剪贴板里没有图片或图片网址",
+        urlBad: "这不是一条能用的图片地址",
+        fetching: "正在下载",
+        fetchingUnknownSize: { got in "已下载 \(got)（对方没说总共多大）" },
+        cancelFetch: "取消",
+        dismissFetch: "知道了",
         copyAfterUpload: "上传后复制",
 
         maxWidth: { px in "最大 \(px)px" },
@@ -87,6 +107,15 @@ extension UploadStrings {
         uploadingBusy: "Uploading…",
         clearList: "Clear List",
 
+        urlPlaceholder: "Paste an image URL, press return",
+        urlFetch: "Fetch",
+        pasteButton: "Paste",
+        pasteEmpty: "No image or image URL on the clipboard",
+        urlBad: "That is not a usable image address",
+        fetching: "Downloading",
+        fetchingUnknownSize: { got in "\(got) downloaded (size unknown)" },
+        cancelFetch: "Cancel",
+        dismissFetch: "OK",
         copyAfterUpload: "Copy after upload",
 
         maxWidth: { px in "Max \(px)px" },

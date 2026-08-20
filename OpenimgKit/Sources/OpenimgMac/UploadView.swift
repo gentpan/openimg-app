@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import OpenimgKit
 
 struct UploadView: View {
@@ -11,6 +12,8 @@ struct UploadView: View {
                 // A small dashed box centred in a large empty page reads as an
                 // afterthought; on this screen it is the whole point.
                 dropZone
+                fetchList
+                urlRow
                 editRow
                 settingsHint
                 formatRow
@@ -21,6 +24,8 @@ struct UploadView: View {
                 // The drop zone stays reachable while a batch is on screen, so
                 // adding more files does not mean clearing the list first.
                 dropZone.frame(maxHeight: 76)
+                fetchList
+                urlRow
                 editRow
                 formatRow
             }
@@ -28,6 +33,93 @@ struct UploadView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 26)
         .padding(.bottom, 18)
+        // Cmd+V。走 onPasteCommand 而不是给按钮挂快捷键:前者participates in
+        // 响应者链,焦点在输入框里时系统会先把 Cmd+V 交给输入框,不会把地址栏
+        // 里的粘贴劫走。
+        .onPasteCommand(of: [.fileURL, .image, .url, .plainText]) { _ in
+            Task { await model.pasteAndUpload() }
+        }
+    }
+
+    // MARK: - 网址取图
+
+    /// 地址栏 + 粘贴。
+    ///
+    /// 摆在拖放区下面而不是塞进拖放区里:拖放区是一块"往这儿扔"的靶子,里面
+    /// 放一个要点进去打字的输入框,两种交互会互相干扰——点输入框会先触发靶子
+    /// 自己的点击(选文件)。
+    private var urlRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "link")
+                .font(.system(size: 12)).foregroundStyle(.tertiary)
+            TextField(L.s.upload.urlPlaceholder, text: $model.urlDraft)
+                .textFieldStyle(.plain)
+                .font(.callout)
+                .onSubmit { model.fetchFromURL(model.urlDraft) }
+            Button(L.s.upload.urlFetch) { model.fetchFromURL(model.urlDraft) }
+                .buttonStyle(QuietButton())
+                .controlSize(.small)
+                .disabled(model.urlDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button(L.s.upload.pasteButton) { Task { await model.pasteAndUpload() } }
+                .buttonStyle(QuietButton())
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: Metrics.field)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.white.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var fetchList: some View {
+        if !model.fetches.isEmpty {
+            VStack(spacing: 6) {
+                ForEach(model.fetches) { fetchRow($0) }
+            }
+        }
+    }
+
+    private func fetchRow(_ f: AppModel.RemoteFetch) -> some View {
+        let bad = f.failed != nil
+        return HStack(spacing: 10) {
+            Image(systemName: bad ? "exclamationmark.triangle.fill" : "arrow.down.circle")
+                .font(.system(size: 14))
+                .foregroundStyle(bad ? AnyShapeStyle(Color.orange) : AnyShapeStyle(Color.brand))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(f.name).font(.callout).lineLimit(1).truncationMode(.middle)
+                if let why = f.failed {
+                    Text(why).font(.caption).foregroundStyle(.orange).lineLimit(2)
+                } else if let frac = f.fraction {
+                    ProgressBar(value: frac).frame(height: 4)
+                    Text("\(model.bytes(f.received)) / \(model.bytes(f.total))")
+                        .font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
+                } else {
+                    // 对方没给 Content-Length。**不画进度条**——没有分母的进度
+                    // 条只能瞎猜一个位置,而那是在骗人。转圈加已下载字节说的是
+                    // 实话:还在下,已经下了这么多。
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text(L.s.upload.fetchingUnknownSize(model.bytes(f.received)))
+                            .font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+            Button(bad ? L.s.upload.dismissFetch : L.s.upload.cancelFetch) {
+                model.dropFetch(f.id)
+            }
+            .buttonStyle(QuietButton())
+            .controlSize(.small)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white.opacity(0.04))
+        )
     }
 
     // MARK: - Drop zone

@@ -3398,6 +3398,73 @@ do {
 }
 
 
+section("按网址取图")
+
+do {
+    func p(_ s: String) -> URL? { RemoteImageURL.parse(s) }
+
+    check("https 通过", p("https://a.com/x.png")?.absoluteString == "https://a.com/x.png")
+    check("http 通过", p("http://a.com/x.png") != nil)
+    check("前后空白不影响", p("  https://a.com/x.png \n") != nil)
+    check("没写协议补 https", p("a.com/x.png")?.scheme == "https")
+
+    // 这几条挡的是"粘贴板上的一段文字变成一次本机读文件"。
+    check("file:// 拒绝", p("file:///etc/passwd") == nil)
+    check("data: 拒绝", p("data:image/png;base64,AAAA") == nil)
+    check("javascript: 拒绝", p("javascript:alert(1)") == nil)
+    check("ftp 拒绝", p("ftp://a.com/x.png") == nil)
+    check("没有 host 拒绝", p("https:///x.png") == nil)
+    check("空串拒绝", p("") == nil)
+    check("带空格拒绝", p("https://a.com/a b.png") == nil)
+    // 本地文件名不该被补成网址——补了会真发一次请求,然后失败在一句
+    // 和原因无关的 DNS 错误上。
+    check("单段文件名不当网址", p("photo.png") == nil)
+    check("光一个点拒绝", p("a.") == nil)
+    check("裸域名不补(取不到图)", p("example.com") == nil)
+    check("带路径才补", p("cdn.example.com/a/b.png")?.absoluteString == "https://cdn.example.com/a/b.png")
+
+    // —— 扩展名:字节头 ——
+    func magic(_ b: [UInt8]) -> Data { Data(b) }
+    check("认 PNG", RemoteImageURL.imageExtension(magic: magic([0x89,0x50,0x4E,0x47,0x0D])) == "png")
+    check("认 JPEG", RemoteImageURL.imageExtension(magic: magic([0xFF,0xD8,0xFF,0xE0])) == "jpeg")
+    check("认 GIF", RemoteImageURL.imageExtension(magic: magic([0x47,0x49,0x46,0x38,0x39])) == "gif")
+    check("认 WebP", RemoteImageURL.imageExtension(
+        magic: magic([0x52,0x49,0x46,0x46,0,0,0,0,0x57,0x45,0x42,0x50])) == "webp")
+    check("认 AVIF", RemoteImageURL.imageExtension(
+        magic: magic([0,0,0,0x20,0x66,0x74,0x79,0x70,0x61,0x76,0x69,0x66])) == "avif")
+    check("认 HEIC", RemoteImageURL.imageExtension(
+        magic: magic([0,0,0,0x20,0x66,0x74,0x79,0x70,0x68,0x65,0x69,0x63])) == "heic")
+    check("认不出返回 nil", RemoteImageURL.imageExtension(magic: magic([0x00,0x01,0x02])) == nil)
+    check("空数据不越界", RemoteImageURL.imageExtension(magic: Data()) == nil)
+
+    // —— 扩展名:Content-Type ——
+    check("认 image/png", RemoteImageURL.imageExtension(contentType: "image/png") == "png")
+    check("带参数也认", RemoteImageURL.imageExtension(contentType: "image/jpeg; charset=binary") == "jpeg")
+    check("大写也认", RemoteImageURL.imageExtension(contentType: "IMAGE/WEBP") == "webp")
+    check("octet-stream 不认", RemoteImageURL.imageExtension(contentType: "application/octet-stream") == nil)
+    check("nil 不炸", RemoteImageURL.imageExtension(contentType: nil) == nil)
+
+    // —— 文件名 ——
+    let png = magic([0x89,0x50,0x4E,0x47])
+    func name(_ u: String, _ ct: String?, _ m: Data) -> String {
+        RemoteImageURL.filename(for: URL(string: u)!, contentType: ct, magic: m)
+    }
+    check("路径带名字就用它", name("https://a.com/cat.png", "image/png", png) == "cat.png")
+    // 这一条是重点:CDN 链接常常没有扩展名,而本地那道格式校验只看扩展名。
+    // 推错就会把一张好好的 PNG 拒成"格式不允许"。
+    check("没扩展名时靠字节头补", name("https://a.com/abc123", nil, png) == "abc123.png")
+    check("字节头压过路径里的假后缀", name("https://a.com/cat.jpg", nil, png) == "cat.png")
+    check("没字节头时用 Content-Type",
+          name("https://a.com/abc", "image/gif", Data()) == "abc.gif")
+    check("查询串不进文件名", !name("https://a.com/cat.png?w=100", "image/png", png).contains("?"))
+    check("路径为空时兜底", name("https://a.com/", "image/png", png) == "image.png")
+    // 目录穿越:".." 顺着 appendingPathComponent 会真的跳到上级目录。
+    check("挡住 ..", !name("https://a.com/../../etc/x", "image/png", png).contains(".."))
+    check("挡住隐藏文件", !name("https://a.com/.bashrc", "image/png", png).hasPrefix("."))
+    check("超长名字截断", name("https://a.com/" + String(repeating: "a", count: 200), "image/png", png).count <= 70)
+}
+
+
 print("\n\(checks - failures)/\(checks) 通过")
 if failures > 0 {
     print("\(failures) 项失败")
