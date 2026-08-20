@@ -2784,6 +2784,121 @@ do {
 }
 
 
+// MARK: - 更新清单
+
+section("更新 · 地址白名单")
+
+do {
+    let good = "https://github.com/gentpan/openimg-app/releases/download/v0.4.0/Openimg-v0.4.0.zip"
+    check("正常的下载地址通过", UpdateURL.check(good) != nil)
+    check("发布说明地址通过",
+          UpdateURL.check("https://github.com/gentpan/openimg-app/releases/tag/v0.4.0") != nil)
+
+    // 这一条是整组里最要紧的:下面这个串的 host 就是 github.com,只校验域名的
+    // 写法会放它过去,而浏览器规范化之后落在攻击者的仓库上。
+    check("路径穿越被挡(host 仍是 github.com)",
+          UpdateURL.check("https://github.com/gentpan/openimg-app/releases/download/../../../evil/repo/x.zip") == nil)
+    check("换个域名被挡", UpdateURL.check("https://evil.example.com/x.zip") == nil)
+    // 前缀里写死了 https,但常量会被改,所以再确认一次。
+    check("明文 http 被挡",
+          UpdateURL.check("http://github.com/gentpan/openimg-app/releases/download/v1/x.zip") == nil)
+    check("换个仓库被挡",
+          UpdateURL.check("https://github.com/someone/else/releases/download/v1/x.zip") == nil)
+    check("前缀对但少一层被挡",
+          UpdateURL.check("https://github.com/gentpan/openimg-app/releases/") == nil)
+    check("空串被挡", UpdateURL.check("") == nil)
+}
+
+section("更新 · 清单解析")
+
+do {
+    let sk = Curve25519.Signing.PrivateKey()
+    let keys = ["k1": sk.publicKey.rawRepresentation]
+
+    func envelope(_ payload: [String: Any], keyID: String = "k1",
+                  signWith signer: Curve25519.Signing.PrivateKey? = nil) -> Data {
+        let body = try! JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        let sig = try! (signer ?? sk).signature(for: body)
+        return try! JSONSerialization.data(withJSONObject: [
+            "payload": body.base64EncodedString(),
+            "sig": sig.base64EncodedString(),
+            "keyId": keyID,
+        ], options: [.sortedKeys])
+    }
+
+    var payload: [String: Any] {
+        [
+            "schema": 1, "seq": 1_787_000_000,
+            "issuedAt": "2026-08-20T10:00:00Z", "expiresAt": "2026-11-18T10:00:00Z",
+            "channel": "stable",
+            "latest": [
+                "version": "0.4.0", "build": 4000,
+                "minimumSystemVersion": "14.0.0", "arch": "arm64",
+                "url": "https://github.com/gentpan/openimg-app/releases/download/v0.4.0/Openimg-v0.4.0.zip",
+                "size": 7_284_592,
+                "sha256": String(repeating: "ab", count: 32),
+                "notesURL": "https://github.com/gentpan/openimg-app/releases/tag/v0.4.0",
+            ],
+            "revokeKeys": [String](),
+        ]
+    }
+
+    func parse(_ d: Data, ct: String? = "application/json", status: Int = 200,
+               revoked: Set<String> = []) -> UpdateManifest? {
+        try? UpdateManifest.parse(d, contentType: ct, status: status,
+                                  publicKeys: keys, revokedKeyIDs: revoked)
+    }
+
+    let ok = envelope(payload)
+    check("正常清单解得开", parse(ok)?.latest.version == SemanticVersion("0.4.0"))
+    check("build 号解得出", parse(ok)?.latest.build == 4000)
+    check("seq 解得出", parse(ok)?.seq == 1_787_000_000)
+
+    // 服务端的 SPA 兜底会返回 200 + text/html。只看状态码的解析器会把一份
+    // HTML 当成合法清单,表现是「静默地永远没有更新」——一个不报错的失败模式。
+    check("HTML 的 Content-Type 被挡", parse(ok, ct: "text/html") == nil)
+    check("没有 Content-Type 被挡", parse(ok, ct: nil) == nil)
+    // Content-Type 能被中间层改写,首字节骗不了人。两道都要。
+    check("正文以 < 开头被挡", parse(Data("<!doctype html>".utf8)) == nil)
+    check("非 200 被挡", parse(ok, status: 404) == nil)
+    check("超过 64 KiB 被挡",
+          parse(Data(repeating: UInt8(ascii: "{"), count: UpdateManifest.maxBytes + 1)) == nil)
+
+    // 签名
+    var tampered = ok
+    if let i = tampered.indices.dropLast(20).last { tampered[i] = tampered[i] &+ 1 }
+    check("改一个字节就验不过", parse(tampered) == nil)
+    check("别人的私钥签的验不过", parse(envelope(payload, signWith: .init())) == nil)
+    check("未知 keyId 被挡", parse(envelope(payload, keyID: "k9")) == nil)
+    check("作废的 keyId 被挡", parse(ok, revoked: ["k1"]) == nil)
+
+    // 内容校验:这些都在验签之后,防的是"签名对但内容不对"的自己人失误。
+    func broken(_ mutate: (inout [String: Any]) -> Void) -> Data {
+        var p = payload; mutate(&p); return envelope(p)
+    }
+    check("不认识的 schema 被挡", parse(broken { $0["schema"] = 2 }) == nil)
+    check("seq 为 0 被挡", parse(broken { $0["seq"] = 0 }) == nil)
+    check("版本号解不出被挡",
+          parse(broken { var l = $0["latest"] as! [String: Any]; l["version"] = "四点零"; $0["latest"] = l }) == nil)
+    // sha256 长度不对现在不拦的话,到比对下载物那一步会变成"永远对不上"的哑失败。
+    check("sha256 长度不对被挡",
+          parse(broken { var l = $0["latest"] as! [String: Any]; l["sha256"] = "abc"; $0["latest"] = l }) == nil)
+    check("sha256 含非十六进制被挡",
+          parse(broken { var l = $0["latest"] as! [String: Any]; l["sha256"] = String(repeating: "zz", count: 32); $0["latest"] = l }) == nil)
+    check("size 为 0 被挡",
+          parse(broken { var l = $0["latest"] as! [String: Any]; l["size"] = 0; $0["latest"] = l }) == nil)
+    // 签名有效也救不了一个不在白名单里的地址——私钥泄露时这是最后一道。
+    check("签名有效但地址穿越,仍被挡",
+          parse(broken { var l = $0["latest"] as! [String: Any]
+                         l["url"] = "https://github.com/gentpan/openimg-app/releases/download/../../evil/x.zip"
+                         $0["latest"] = l }) == nil)
+    check("签名有效但说明地址换了域名,仍被挡",
+          parse(broken { var l = $0["latest"] as! [String: Any]
+                         l["notesURL"] = "https://evil.example.com/notes"
+                         $0["latest"] = l }) == nil)
+}
+
+
 print("\n\(checks - failures)/\(checks) 通过")
 if failures > 0 {
     print("\(failures) 项失败")
