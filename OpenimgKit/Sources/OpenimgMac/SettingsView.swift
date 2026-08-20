@@ -16,6 +16,10 @@ struct SettingsView: View {
     @State private var saveHovering = false
     /// 已经失焦、等着退回只读态。
     @State private var namePendingRevert = false
+    /// 指针是不是正压在昵称输入框上。
+    @State private var fieldHovering = false
+    /// 编辑昵称期间装的鼠标按下监听。见 installNameClickMonitor。
+    @State private var nameClickMonitor: Any?
     @State private var code = ""
     @State private var newPassword = ""
     @State private var pkExpanded = false
@@ -69,6 +73,20 @@ struct SettingsView: View {
             case .location:   locationCard
             }
         }
+        // 点空白处退出昵称编辑,靠的是 installNameClickMonitor,不是在这里挂
+        // 一个 onTapGesture。
+        //
+        // 挂祖先手势有个绕不开的顺序问题:点昵称那一下,昵称自己的手势要把
+        // editingName 置真,而祖先的手势看到"正在编辑"就会把它撤销——两者谁
+        // 先谁后不是由这段代码决定的。要挡住就得比时间戳,而那种代码没人看得
+        // 懂它在防什么。
+        //
+        // 监听没有这个问题:它只在编辑期间装,而进入编辑的那一次 mouseDown 在
+        // 装之前就派发完了,它根本看不到。
+        .onChange(of: editingName) { _, on in
+            if on { installNameClickMonitor() } else { removeNameClickMonitor() }
+        }
+        .onDisappear { removeNameClickMonitor() }
         .task(id: model.account?.id) { await model.loadStats() }
         .sheet(item: $sheet) { which in
             switch which {
@@ -202,6 +220,7 @@ struct SettingsView: View {
                             .strokeBorder(.white.opacity(0.14), lineWidth: 1)
                     )
                     .frame(maxWidth: 260)
+                    .onHover { fieldHovering = $0 }
                     .onSubmit { commitName() }
                     .onExitCommand { cancelName() }
                     .focused($nameFocused)
@@ -281,13 +300,44 @@ struct SettingsView: View {
         }
     }
 
-    /// 条件都满足就退回只读态。两个入口调它:延时到点,以及指针离开「保存」。
+    /// 条件都满足就退回只读态。三个入口调它:延时到点、指针离开「保存」、
+    /// 以及鼠标监听。
+    ///
+    /// **不能拿 `nameFocused` 当条件**——这正是第一版没生效的原因:点一块没
+    /// 有响应者的空白区域时,TextField 仍然是第一响应者,焦点根本没走。改用
+    /// "指针不在输入框、也不在保存按钮上"来判断。
     private func tryNameRevert() {
-        guard namePendingRevert, editingName, !nameFocused, !saveHovering else { return }
+        guard namePendingRevert, editingName, !saveHovering, !fieldHovering else { return }
         cancelName()
     }
 
+    /// 编辑期间监听 app 内的鼠标按下。
+    ///
+    /// 这是第二条路,和上面那个 `.onTapGesture` 各走各的:手势依赖 SwiftUI 把
+    /// 点击沿祖先链冒上来,而卡片里嵌了滚动视图、图表、各种自绘背景,哪一层
+    /// 会不会把事件吃掉不是看一眼就能确定的事。监听走的是 AppKit 那一层,不
+    /// 受这些影响。两条都只是调同一个幂等的函数,同时触发也无所谓。
+    ///
+    /// 监听里**不直接撤销**,仍然走那个带延时的 schedule:监听在 mouseDown 就
+    /// 触发,比按钮的 action(mouseUp)更早,直接撤销会让「保存」在自己跑起来
+    /// 之前就消失。
+    private func installNameClickMonitor() {
+        guard nameClickMonitor == nil else { return }
+        nameClickMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { event in
+            if !fieldHovering && !saveHovering { scheduleNameRevert() }
+            return event        // 只看,不吞
+        }
+    }
+
+    private func removeNameClickMonitor() {
+        if let m = nameClickMonitor { NSEvent.removeMonitor(m) }
+        nameClickMonitor = nil
+    }
+
     private func cancelName() {
+        removeNameClickMonitor()
         nameRevert?.cancel(); nameRevert = nil
         namePendingRevert = false
         draftName = nil
@@ -296,6 +346,7 @@ struct SettingsView: View {
     }
 
     private func commitName() {
+        removeNameClickMonitor()
         nameRevert?.cancel(); nameRevert = nil
         namePendingRevert = false
         defer { editingName = false; nameFocused = false }
