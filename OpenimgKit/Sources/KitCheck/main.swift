@@ -3375,6 +3375,29 @@ do {
 }
 
 
+section("用户组")
+
+do {
+    check("认得 admin", AccountTier.parse("admin") == .admin)
+    check("认得 trusted", AccountTier.parse("trusted") == .trusted)
+    check("认得 free", AccountTier.parse("free") == .free)
+    check("大小写不敏感", AccountTier.parse("Admin") == .admin)
+
+    // 组是数据库里的一行,后台随时能加。认不出来时必须带着原名活下来——
+    // 崩溃或者空白等于让一次后台改动把用户的资料卡打成一片空。
+    check("未知组退回 other", AccountTier.parse("vip") == .other("vip"))
+    check("未知组留住原名", AccountTier.parse("vip").rawName == "vip")
+    check("未知组也有图形", !AccountTier.parse("vip").symbol.isEmpty)
+    check("空名字不炸", AccountTier.parse("").rawName == "")
+
+    // 四种各有各的图形,否则水印区分不出组来。
+    let marks = [AccountTier.admin, .trusted, .free, .other("x")].map(\.symbol)
+    check("四种图形互不相同", Set(marks).count == 4)
+    // macOS 14 是下限,medal.fill 要 15,用了会画成空方框。
+    check("没有用 macOS 15 才有的图形", !marks.contains("medal.fill"))
+}
+
+
 print("\n\(checks - failures)/\(checks) 通过")
 if failures > 0 {
     print("\(failures) 项失败")

@@ -1,5 +1,15 @@
 import SwiftUI
 
+/// 卡片右上角那枚水印。
+///
+/// 只是一枚放大的、压得很淡的图形,不承载信息——同一件事在别处必须还有一个说
+/// 得清的表达(资料卡上是那枚文字徽章)。水印读的是"一眼认出这是哪一类",而不
+/// 是"读出这是哪一类"。
+struct PanelWatermark {
+    let symbol: String
+    let tint: Color
+}
+
 /// 概览页与设置页共用的卡壳。
 ///
 /// 原来是两个:`OverviewView` 里的 `Card` 和 `SettingsView` 里的 `SettingsCard`,
@@ -13,6 +23,8 @@ struct PanelCard<Content: View, Accessory: View>: View {
     /// 默认不吃:多数卡是几行字,撑开只会让内部松散。图表是例外——它有一根
     /// 基线,不撑满就会停在半空,下面吊一大片空白。
     var fills = false
+    /// 右上角那枚水印。见 PanelWatermark。
+    var watermark: PanelWatermark?
     /// 标题行右端的东西——翻页、切换之类**属于这张卡**的控件。
     ///
     /// 放在标题行而不是内容底部:它管的是整张卡显示什么,不是内容的一部分。
@@ -21,11 +33,13 @@ struct PanelCard<Content: View, Accessory: View>: View {
     @ViewBuilder let content: Content
 
     init(_ title: String, _ icon: String, fills: Bool = false,
+         watermark: PanelWatermark? = nil,
          @ViewBuilder accessory: () -> Accessory = { EmptyView() },
          @ViewBuilder content: () -> Content) {
         self.title = title
         self.icon = icon
         self.fills = fills
+        self.watermark = watermark
         self.accessory = accessory()
         self.content = content()
     }
@@ -54,6 +68,27 @@ struct PanelCard<Content: View, Accessory: View>: View {
         // 到行高、内容顶对齐,它仍然是一块完整的面板——空白进到卡里就不叫空白
         // 了。原来那 523pt 是卡与卡之外的空白,那才是断裂。
         .frame(maxHeight: .infinity, alignment: .top)
+        // 水印画在内容**底下**,并且裁到面板自己的形状上。
+        //
+        // 裁剪是必须的:它有意向右上角外溢一截,不裁就会盖到圆角外面,看着不
+        // 是水印,是一个没放好的图标。而 panelSurface 只画背景和描边、不裁,
+        // 所以这一层得自己裁。
+        .background { watermarkLayer }
         .panelSurface()
+    }
+
+    @ViewBuilder
+    private var watermarkLayer: some View {
+        if let w = watermark {
+            Image(systemName: w.symbol)
+                .font(.system(size: 88, weight: .semibold))
+                .foregroundStyle(w.tint.opacity(0.12))
+                .offset(x: 22, y: -12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .clipShape(RoundedRectangle(cornerRadius: Metrics.panelRadius, style: .continuous))
+                // 纯装饰:既不该挡住头像和昵称的点击,也不该被念出来。
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 }

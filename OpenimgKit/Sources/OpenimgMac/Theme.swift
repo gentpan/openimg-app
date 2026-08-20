@@ -15,6 +15,12 @@ import AppKit
 /// and obvious the moment two of them share a row. A fixed height is also
 /// stable across fonts, where padding is not.
 enum Metrics {
+    /// 卡片面板的圆角。
+    ///
+    /// 放在这里而不是 PanelCard 里:PanelCard 是泛型,泛型类型不能有静态存储
+    /// 属性;而这个数至少有两处要用(画面板、把水印裁到同一个形状),两处各写
+    /// 一个 14 迟早会对不上,那种错的表现是水印溢出圆角一点点,说不清哪里怪。
+    static let panelRadius: CGFloat = 14
     /// 独立控件的高度:按钮、Pill、工具格子。
     static let control: CGFloat = 32
     /// 输入行(Field)的高度。
@@ -176,7 +182,7 @@ extension View {
     /// Panels that hold content: dashboard cards, drop zones, the login card.
     /// Quieter than chrome — a container should not compete with the controls
     /// floating over it.
-    func panelSurface(_ radius: CGFloat = 14) -> some View {
+    func panelSurface(_ radius: CGFloat = Metrics.panelRadius) -> some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         return self
             .background(shape.fill(Color.white.opacity(0.045)))

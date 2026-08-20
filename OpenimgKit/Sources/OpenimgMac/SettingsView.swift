@@ -107,7 +107,8 @@ struct SettingsView: View {
     /// have 401'd. They now sit alongside the other things a token may do to
     /// its own account — see the note in router.go for where that line is.
     private var profileCard: some View {
-        PanelCard(L.s.settings.profile, "person.crop.circle") {
+        PanelCard(L.s.settings.profile, "person.crop.circle",
+                  watermark: profileWatermark) {
             if let a = model.account {
                 HStack(alignment: .top, spacing: 14) {
                     avatarWell(a)
@@ -138,6 +139,25 @@ struct SettingsView: View {
                 LevelRow(model: model)
             }
         }
+    }
+
+    /// 资料卡右上角那枚水印,按用户组换图形和颜色。
+    ///
+    /// 颜色沿用网页端 GroupBadge 已经立好的那套,两端保持一致:琥珀是管理员、
+    /// 青色表示"正向状态"、中性是不加标记的那一档。认不出来的组走中性——组是
+    /// 数据库里的一行,后台加一个新组不该让这张卡变成空白。
+    ///
+    /// 配额没回来之前不画。画一个"默认的"会先闪一下 free 的图形再跳成真实的
+    /// 那个,而那一下跳变比空着更显眼。
+    private var profileWatermark: PanelWatermark? {
+        guard let name = model.quota?.tier.name else { return nil }
+        let tier = AccountTier.parse(name)
+        let tint: Color = switch tier {
+        case .admin: .orange
+        case .trusted: .teal
+        case .free, .other: .white
+        }
+        return PanelWatermark(symbol: tier.symbol, tint: tint)
     }
 
     /// 头像本体就是入口:点击选图、悬浮显相机、把图片拖上来直接换。
