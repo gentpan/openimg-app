@@ -93,8 +93,18 @@ else
 fi
 
 echo "5/5 创建 GitHub Release…"
-gh release create "$VERSION" "$ZIP" \
-  --title "$VERSION" \
-  --notes "Developer ID 签名并已公证 —— 下载解压,拖进「应用程序」直接打开。" \
-  --latest
+# 有 release-notes/<版本>.md 就用它,没有才退回那句通用说明。
+#
+# 写死一句话的代价是:每次发版的说明都一样,而看到"有新版本"的人第一个问题
+# 永远是"改了什么"。让说明和代码一起进版本库,发版时就不会临时去补。
+NOTES="$ROOT/release-notes/$VERSION.md"
+if [[ -f "$NOTES" ]]; then
+  gh release create "$VERSION" "$ZIP" --title "$VERSION" --notes-file "$NOTES" --latest
+else
+  echo "  (没有 release-notes/$VERSION.md,用通用说明)"
+  gh release create "$VERSION" "$ZIP" \
+    --title "$VERSION" \
+    --notes "Developer ID 签名并已公证 —— 下载解压,拖进「应用程序」直接打开。" \
+    --latest
+fi
 echo "完成:https://github.com/gentpan/openimg-app/releases/tag/$VERSION"
