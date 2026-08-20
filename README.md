@@ -1,8 +1,38 @@
-# Openimg
+<p align="center">
+  <img src="docs/icon.png" width="112" alt="Openimg">
+</p>
 
-免费图床 [openimg.io](https://openimg.io) 的 macOS 客户端。拖进来就传好，链接直接进剪贴板。
+<h1 align="center">Openimg for macOS</h1>
+
+<p align="center">
+  把图拖进来，链接直接进剪贴板。<br>
+  免费图床 <a href="https://openimg.io">openimg.io</a> 的 macOS 客户端。
+</p>
+
+<p align="center">
+  <a href="https://github.com/gentpan/openimg-app/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/gentpan/openimg-app?label=%E4%B8%8B%E8%BD%BD&color=90FF3A&labelColor=0a0a0a"></a>
+  <a href="https://github.com/gentpan/openimg-app/releases"><img alt="下载量" src="https://img.shields.io/github/downloads/gentpan/openimg-app/total?label=%E7%B4%AF%E8%AE%A1%E4%B8%8B%E8%BD%BD&color=90FF3A&labelColor=0a0a0a"></a>
+  <img alt="系统要求" src="https://img.shields.io/badge/macOS-14%2B%20·%20Apple%20Silicon-0a0a0a?logo=apple&logoColor=white">
+  <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white&labelColor=0a0a0a">
+  <img alt="零依赖" src="https://img.shields.io/badge/%E7%AC%AC%E4%B8%89%E6%96%B9%E4%BE%9D%E8%B5%96-0-0a0a0a">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/gentpan/openimg-app?label=%E8%AE%B8%E5%8F%AF&color=90FF3A&labelColor=0a0a0a"></a>
+</p>
 
 ![Openimg 概览](docs/overview.png)
+
+## 这个东西解决什么问题
+
+写文档、发帖子、回帖，图不能直接贴 —— 得先传到某个地方拿到链接。这件事一天要做十几次，
+而每次都是：打开网页、找到上传按钮、选文件、等、复制链接、切回来。
+
+Openimg 把这段路压成一步：**图拖进窗口，链接已经在剪贴板里了。**
+
+适合这些人：
+
+- 写 Markdown 的 —— 博客、文档、README，图多且链接格式固定
+- 在论坛和群里发图的 —— 要外链，要 BBCode
+- 需要图片长期可访问的 —— 不想哪天图床跑路，所以支持绑自己的 R2 / S3
+- 在意隐私的 —— 照片里的定位信息在上传前就抹掉了
 
 ## 下载
 
@@ -108,6 +138,23 @@ Cloudflare R2 · AWS S3 · Backblaze B2 · DigitalOcean Spaces · 阿里云 OSS 
 
 **支持 Intel 的 Mac 吗？**
 暂时不支持，目前只有 Apple 芯片版本。
+
+## 技术栈
+
+| | |
+|---|---|
+| 语言 | Swift 6（严格并发） |
+| 界面 | SwiftUI · Swift Charts |
+| 图像 | Core Image · ImageIO · Vision（本机抠图） |
+| 登录 | AuthenticationServices（Passkey / OAuth）· Keychain |
+| 依赖 | **无。** 一个第三方包都没有 |
+| 最低系统 | macOS 14 |
+
+图像处理、EXIF 剥离、水印合成、布局求解全在本机完成，不经过服务器。
+纯逻辑集中在一个独立的包里，随代码跑 454 项自检。
+
+服务端是 Go + PostgreSQL + S3 兼容存储，在
+[gentpan/openimg](https://github.com/gentpan/openimg)。
 
 ## 其他
 
