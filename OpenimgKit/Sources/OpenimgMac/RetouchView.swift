@@ -98,6 +98,10 @@ struct RetouchView: View {
             TextEditor(text: $model.retouchPrompt)
                 .font(.callout)
                 .scrollContentBackground(.hidden)
+                // 藏掉右侧那根常驻滚动条。开了「始终显示滚动条」的机器上,
+                // 这个两三行高的输入框会一直挂着一根空轨道,像是框里已经有
+                // 很多内容;滚动本身不受影响,内容多了照样能滚。
+                .scrollIndicators(.never)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 4)
                 .frame(height: 64)
