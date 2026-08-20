@@ -113,3 +113,39 @@ struct LinkButton: ButtonStyle {
             .animation(.easeOut(duration: 0.1), value: hovering)
     }
 }
+
+/// 长得和 QuietButton 一模一样的菜单。
+///
+/// Menu 不吃 ButtonStyle:套上 `.buttonStyle(QuietButton())` 不会把描边和底色
+/// 画出来,只会改标签字体。所以这里把 QuietButton 那几个数照抄一遍——它们必须
+/// 一致,否则和「导出全部」「全选本页」并排放着,一眼就看得出是两种东西。
+///
+/// `.tint` 那一行不是装饰:borderless 菜单会用**强调色**画自己的标签,而这个
+/// App 把强调色设成了品牌绿——不压住的话,这一颗会绿着,旁边两颗是白的。
+struct QuietMenu<Content: View>: View {
+    let title: String
+    let icon: String
+    @ViewBuilder let content: Content
+    @State private var hovering = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 9, style: .continuous)
+        return Menu {
+            content
+        } label: {
+            Label(title, systemImage: icon)
+                .font(.callout)
+                .padding(.horizontal, 13)
+                .frame(height: Metrics.control)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .tint(Color.primaryLabel)
+        .background(shape.fill(.white.opacity(hovering ? 0.09 : 0.05)))
+        .overlay(shape.strokeBorder(.white.opacity(0.09), lineWidth: 0.8))
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.1), value: hovering)
+    }
+}

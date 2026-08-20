@@ -81,12 +81,6 @@ struct GalleryView: View {
             }
 
             Spacer()
-
-            Button(model.selection.count == model.images.count
-                   ? L.s.gallery.deselectAll : L.s.gallery.selectAll) {
-                model.toggleAll()
-            }
-            .buttonStyle(QuietButton())
         }
         .padding(.horizontal, 18)
         .padding(.bottom, 12)
@@ -139,6 +133,32 @@ struct GalleryView: View {
                 Text(L.s.gallery.usedSpace(model.bytes(q.usedBytes)))
             }
             Spacer()
+            // 三颗同款(icon + 名字),因为它们是同一类事:对当前这一页做点什么。
+            // 原来「全选本页」在上面那排、「每页张数」在顶栏,三件同类的事分散
+            // 在三个地方,每次要找。
+            Button {
+                model.toggleAll()
+            } label: {
+                let all = model.selection.count == model.images.count
+                Label(all ? L.s.gallery.deselectAll : L.s.gallery.selectAll,
+                      systemImage: all ? "checkmark.circle.fill" : "checkmark.circle")
+            }
+            .buttonStyle(QuietButton())
+            .disabled(model.images.isEmpty)
+
+            QuietMenu(title: L.s.nav.perPageCount(model.pageSize),
+                      icon: "square.grid.2x2") {
+                ForEach(model.pageSizes, id: \.self) { n in
+                    Button {
+                        model.pageSize = n
+                        Task { await model.load(resetPage: true) }
+                    } label: {
+                        Label(L.s.nav.perPageCount(n),
+                              systemImage: model.pageSize == n ? "checkmark" : "square.grid.2x2")
+                    }
+                }
+            }
+
             exportControl
             if model.pageCount > 1 {
                 ToolCluster {

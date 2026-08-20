@@ -134,6 +134,7 @@ extension Color {
     /// The grey the toolbar's plain tiles resolve to, as a concrete Color so it
     /// can be handed to `.tint`, which does not take a hierarchical style.
     static let secondaryLabel = Color(nsColor: .secondaryLabelColor)
+    static let primaryLabel = Color(nsColor: .labelColor)
 
     static var brandInk: Color { BrandTint.current.ink }
     /// 侧栏发光条的强度,随色相走。
@@ -284,14 +285,22 @@ struct ToolTile: View {
     var spinning = false
     let action: () -> Void
     @State private var hovering = false
-    @State private var angle: Double = 0
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
+            // 转的时候换成系统的圆圈,而不是让图标自己打转。
+            //
+            // 图标打转看着像图标坏了:那枚箭头本身有朝向,转起来读的是「这个符
+            // 号在动」;而圆圈是所有人都认识的「正在忙」,没有第二种读法。
+            Group {
+                if spinning {
+                    ProgressView().controlSize(.small).scaleEffect(0.62)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 13, weight: .medium))
+                }
+            }
                 .foregroundStyle(disabled ? .tertiary : .secondary)
-                .rotationEffect(.degrees(angle))
                 .frame(width: ToolTileSize.width, height: ToolTileSize.height)
                 .background {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -304,19 +313,6 @@ struct ToolTile: View {
         .help(help)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.1), value: hovering)
-        // 每次一整圈,角度只增不减。
-        //
-        // 不用 repeatForever:那样 angle 被一次性设成目标值,停下来时读到的是
-        // 终点而不是当前朝向,想收回正位只能往回倒转一圈——看着像刷新失败了
-        // 在退回去。一圈一圈地加则永远停在正位上:任务被取消时,最后那一圈的
-        // 动画仍会自己走完,而它的终点必然是 360 的整数倍。
-        .task(id: spinning) {
-            guard spinning else { return }
-            while !Task.isCancelled {
-                withAnimation(.linear(duration: 0.9)) { angle += 360 }
-                try? await Task.sleep(for: .milliseconds(900))
-            }
-        }
     }
 }
 

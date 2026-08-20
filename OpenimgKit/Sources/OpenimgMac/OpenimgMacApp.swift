@@ -154,32 +154,14 @@ struct TopBar: View {
 
             Spacer(minLength: 12)
 
-            if model.section == .gallery {
-                ToolCluster {
-                    menuTile("arrow.up.arrow.down", L.s.nav.sort) {
-                        ForEach(SortKey.allCases) { s in
-                            Button {
-                                model.sort = s
-                                Task { await model.load(resetPage: true) }
-                            } label: {
-                                Label(L.s.gallery.sortLabel(s),
-                                      systemImage: model.sort == s ? "checkmark" : s.icon)
-                            }
-                        }
-                    }
-                    menuTile("square.grid.2x2", L.s.nav.perPage) {
-                        ForEach(model.pageSizes, id: \.self) { n in
-                            Button {
-                                model.pageSize = n
-                                Task { await model.load(resetPage: true) }
-                            } label: {
-                                Label(L.s.nav.perPageCount(n),
-                                      systemImage: model.pageSize == n ? "checkmark" : "square.grid.2x2")
-                            }
-                        }
-                    }
-                }
-            }
+            // 图库那一组撤了。
+            //
+            // 排序在下面那排 tabs 里已经有了,同一件事摆两个入口,读者会以为它
+            // 们不一样;每页张数挪到了底部,和「全选本页」「导出全部」放在一起
+            // ——三件事都是"对这一页做点什么",本来就该在同一个地方,原来却分散
+            // 在顶栏、筛选行、底栏三处,每次都要找。
+            //
+            // 刷新留在这儿:它每一页都在,跟着页面内容跑会让它在切页时移位。
 
             ToolCluster {
                 ToolTile(icon: "arrow.clockwise", help: L.s.common.refresh,
@@ -191,34 +173,6 @@ struct TopBar: View {
         .padding(.horizontal, 18)
         .padding(.top, 14)
         .padding(.bottom, 12)
-    }
-
-    /// A tile that opens a menu, keeping the tile's own look instead of the
-    /// system menu button's chrome.
-    private func menuTile<C: View>(_ icon: String, _ help: String,
-                                   @ViewBuilder items: () -> C) -> some View {
-        Menu {
-            items()
-        } label: {
-            Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: ToolTileSize.width, height: ToolTileSize.height)
-                .contentShape(Rectangle())
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        // 外层也钉一遍。只钉 label 不够:Menu 会在 label 外面自己加一圈内边距,
-        // 于是两组格子摆在一起时高度对不上,而代码里两个尺寸是同一个常量——
-        // 那种"数字明明一样却长得不一样"最费时间。
-        .frame(width: ToolTileSize.width, height: ToolTileSize.height)
-        // A borderless menu paints its label with the *accent* colour, which
-        // this app sets to the brand green — so these two came out green while
-        // the plain tiles beside them stayed grey. Tinting the menu itself is
-        // what actually overrides it; a .foregroundStyle on the label does not.
-        .tint(Color.secondaryLabel)
-        .help(help)
     }
 }
 
