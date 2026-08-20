@@ -141,23 +141,25 @@ struct SettingsView: View {
         }
     }
 
-    /// 资料卡右上角那枚水印,按用户组换图形和颜色。
+    /// 资料卡右上角那枚水印,按用户组换**图形**。
     ///
-    /// 颜色沿用网页端 GroupBadge 已经立好的那套,两端保持一致:琥珀是管理员、
-    /// 青色表示"正向状态"、中性是不加标记的那一档。认不出来的组走中性——组是
-    /// 数据库里的一行,后台加一个新组不该让这张卡变成空白。
+    /// 认不出来的组也有图形——组是数据库里的一行,后台加一个新组不该让这张卡
+    /// 变成空白。
     ///
     /// 配额没回来之前不画。画一个"默认的"会先闪一下 free 的图形再跳成真实的
     /// 那个,而那一下跳变比空着更显眼。
     private var profileWatermark: PanelWatermark? {
         guard let name = model.quota?.tier.name else { return nil }
         let tier = AccountTier.parse(name)
-        let tint: Color = switch tier {
-        case .admin: .orange
-        case .trusted: .teal
-        case .free, .other: .white
-        }
-        return PanelWatermark(symbol: tier.symbol, tint: tint)
+        // 一律白色系。
+        //
+        // 原来按用户组给色(管理员琥珀、受信任青),那是照搬网页端徽章的配色——
+        // 但徽章是**实心小块**,颜色是它的主要信息;水印是压到 12% 的一大片,
+        // 同样的琥珀在紫色主题下变成一团发浑的土黄,既不像品牌色也不像中性色。
+        //
+        // 白色在两种主题下都干净,而且它本来就不承载信息——旁边那枚文字徽章已
+        // 经把用户组说清楚了,水印只负责"一眼认出这是哪一类"的那个形状。
+        return PanelWatermark(symbol: tier.symbol, tint: .white)
     }
 
     /// 头像本体就是入口:点击选图、悬浮显相机、把图片拖上来直接换。

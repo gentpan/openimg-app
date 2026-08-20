@@ -142,6 +142,12 @@ struct QuietMenu<Content: View>: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        // 外层再钉一次高度。
+        //
+        // 只钉标签不够:Menu 会按自己的算法定尺寸,标签上的 frame 只影响标签,
+        // 结果这一颗比旁边两颗矮一截——而代码里写的是同一个 Metrics.control,
+        // 光看代码看不出来。背景和描边挂在这一层之后,才和 QuietButton 一样高。
+        .frame(height: Metrics.control)
         .tint(Color.primaryLabel)
         .background(shape.fill(.white.opacity(hovering ? 0.09 : 0.05)))
         .overlay(shape.strokeBorder(.white.opacity(0.09), lineWidth: 0.8))

@@ -106,8 +106,19 @@ final class AppModel: ObservableObject {
             BrandTint.current = brandTint
             UserDefaults.standard.set(brandTint.rawValue, forKey: "brandTint")
             brandTint.applyAppIcon()
+            brandEpoch &+= 1
         }
     }
+    /// 换品牌色时把整棵树重建一次。
+    ///
+    /// `Color.brand` 读的是 `BrandTint.current` 这个全局量,而全局量不是 SwiftUI
+    /// 追踪得到的依赖——只有恰好因为别的原因重绘的视图才会换上新色,没重绘的那
+    /// 些原地留着旧色。表现就是切成紫色之后,个人资料卡里的进度条还是绿的,而
+    /// 旁边的东西已经紫了。重启就好,因为那时全局量已经是新的了。
+    ///
+    /// 真正干净的做法是把品牌色做成 Environment,但那要改上百个调用点;而这个
+    /// 开关一次会话按不了几下,重建一次的代价只是那一瞬间的动画重放。
+    @Published var brandEpoch = 0
 
     // Navigation
     @Published var section: Section_ = .gallery {

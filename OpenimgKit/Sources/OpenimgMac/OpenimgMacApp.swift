@@ -81,7 +81,7 @@ struct RootView: View {
         // 文案取自 L.s 这个静态量而非各视图观察的属性,单靠 objectWillChange
         // 只会刷新恰好在读 model 的视图。换语言时把 epoch 挂上 .id 让整树
         // 重建——代价是回到默认页,但换语言本就是一次性动作。
-        .id(model.langEpoch)
+        .id("\(model.langEpoch)-\(model.brandEpoch)")
         .task {
             await model.restore()
             // 查更新与登录无关:没登录的人也该知道有新版。放在 restore 之后而

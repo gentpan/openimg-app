@@ -224,15 +224,26 @@ struct EditorCanvas: View {
                 ForEach(Mode.allCases, id: \.self) { Text($0.label) }
             }
             .pickerStyle(.segmented)
-            .frame(width: 170)
+            .controlSize(.large)
+            .frame(width: 170, height: Metrics.control)
 
             if mode == .crop {
-                Picker(L.s.editor.ratioLabel, selection: $ratioID) {
-                    ForEach(Self.ratios) { Text($0.label).tag($0.id) }
+                Text(L.s.editor.ratioLabel)
+                    .font(.caption).foregroundStyle(.secondary)
+                // 换掉系统下拉。它自带一套灰底蓝箭头的原生外观,和这一排其余
+                // 控件既不同色也不同高;QuietMenu 和「清除裁剪」是同一套壳。
+                QuietMenu(title: Self.ratios.first { $0.id == ratioID }?.label
+                                 ?? L.s.editor.ratioLabel,
+                          icon: "aspectratio") {
+                    ForEach(Self.ratios) { r in
+                        Button {
+                            ratioID = r.id
+                        } label: {
+                            Label(r.label,
+                                  systemImage: ratioID == r.id ? "checkmark" : "aspectratio")
+                        }
+                    }
                 }
-                // 留给英文的 Ratio / Freeform:中文「比例」「自由」各两字,
-                // 按中文收紧宽度英文就会截成 Freefor…。
-                .frame(width: 160)
                 .onChange(of: ratioID) { _, id in
                     // 旋转按钮转置比例时只换显示,框已被 rotateSpecCW 转好,
                     // 重套一遍反而会用错基准。
@@ -256,7 +267,8 @@ struct EditorCanvas: View {
                     Text(L.s.editor.mosaicSolid).tag(MosaicStyle.solid)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 140)
+                .controlSize(.large)
+                .frame(width: 140, height: Metrics.control)
                 .onChange(of: spec.mosaicStyle) { _, _ in Task { await refreshPreview() } }
                 Text(L.s.editor.brush).font(.caption).foregroundStyle(.secondary)
                 Slider(value: $brush, in: 0.006...0.06).frame(width: 110)
@@ -311,6 +323,8 @@ struct EditorCanvas: View {
             Label(L.s.editor.enhance, systemImage: "wand.and.stars")
         }
         .toggleStyle(.button)
+        .controlSize(.large)
+        .frame(height: Metrics.control)
         .disabled(rendering)
         .help(L.s.editor.enhanceHelp)
         .onChange(of: spec.enhance) { _, _ in
@@ -321,6 +335,8 @@ struct EditorCanvas: View {
             Label(L.s.editor.cutout, systemImage: "person.and.background.dotted")
         }
         .toggleStyle(.button)
+        .controlSize(.large)
+        .frame(height: Metrics.control)
         .disabled(rendering)
         .help(L.s.editor.cutoutHelp)
         .onChange(of: spec.cutout) { _, _ in
