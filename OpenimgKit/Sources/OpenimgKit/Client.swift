@@ -230,11 +230,6 @@ public struct OpenimgClient: Sendable {
         return w.avatarURL ?? w.url
     }
 
-    public func deleteAvatar() async throws {
-        let (data, resp) = try await session.data(for: request("DELETE", "api/account/avatar"))
-        _ = try decode(OK.self, data, resp)
-    }
-
     // MARK: - Account security
 
     /// Mails a six-digit code to the account's own address.

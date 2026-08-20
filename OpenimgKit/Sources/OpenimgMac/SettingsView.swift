@@ -140,8 +140,12 @@ struct SettingsView: View {
         }
     }
 
-    /// 头像本体就是入口:点击选图、悬浮显相机、把图片拖上来直接换——
-    /// 下面的文字链接保留,给不喜欢猜交互的人一条明路。
+    /// 头像本体就是入口:点击选图、悬浮显相机、把图片拖上来直接换。
+    ///
+    /// 底下原来还有一行「更换 · 移除」的文字链接。去掉了:「更换」和点头像
+    /// 本身是同一件事,同一个动作摆两个入口,读者会以为它们不一样;而「移除」
+    /// 这条路整个不再提供——头像是可以覆盖的,没有必要专门给"变回没有头像"
+    /// 留一个按钮。
     private func avatarWell(_ a: Account) -> some View {
         VStack(spacing: 6) {
             Button {
@@ -173,15 +177,6 @@ struct SettingsView: View {
                     }
                 }
                 return true
-            }
-            HStack(spacing: 4) {
-                Button(L.s.settings.change) { Task { await model.pickAvatar() } }
-                    .buttonStyle(LinkButton()).font(.caption)
-                if a.avatarURL?.isEmpty == false {
-                    Text("·").font(.caption).foregroundStyle(.quaternary)
-                    Button(L.s.settings.remove) { Task { await model.removeAvatar() } }
-                        .buttonStyle(LinkButton()).font(.caption)
-                }
             }
             .disabled(model.busy)
         }

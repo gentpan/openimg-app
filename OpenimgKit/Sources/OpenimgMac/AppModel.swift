@@ -1367,18 +1367,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func removeAvatar() async {
-        busy = true
-        defer { busy = false }
-        do {
-            try await client().deleteAvatar()
-            account = try await client().me()
-            announce(L.s.errors.avatarRemoved)
-        } catch {
-            announce(message(error))
-        }
-    }
-
     /// Rejects what the server would reject anyway.
     ///
     /// Worth doing locally because the daily upload count is consumed by the

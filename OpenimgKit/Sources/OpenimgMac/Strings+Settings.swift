@@ -11,8 +11,6 @@ struct SettingsStrings: Sendable {
     let nickname: String
     let nicknameEditHint: String
     let avatarHelp: String
-    let change: String
-    let remove: String
 
     // 外观
     let appearance: String
@@ -215,8 +213,6 @@ extension SettingsStrings {
         nickname: "昵称",
         nicknameEditHint: "点一下改昵称",
         avatarHelp: "点击或拖入图片更换头像",
-        change: "更换",
-        remove: "移除",
 
         appearance: "外观",
         appAndDevice: "应用与设备",
@@ -417,8 +413,6 @@ extension SettingsStrings {
         nickname: "Nickname",
         nicknameEditHint: "Click to change your nickname",
         avatarHelp: "Click or drop an image to change your avatar",
-        change: "Change",
-        remove: "Remove",
 
         appearance: "Appearance",
         appAndDevice: "App & Device",

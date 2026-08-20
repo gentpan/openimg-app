@@ -57,7 +57,6 @@ struct ErrorStrings: Sendable {
     let pickAvatar: String
     let avatarTooLarge: String
     let avatarUpdated: String
-    let avatarRemoved: String
 }
 
 extension ErrorStrings {
@@ -100,8 +99,7 @@ extension ErrorStrings {
         nicknameChanged: { name in "昵称已改为 \(name)" },
         pickAvatar: "选择一张图片作为头像",
         avatarTooLarge: "头像图片超过 8 MB，请换小一点的",
-        avatarUpdated: "头像已更新",
-        avatarRemoved: "已移除头像")
+        avatarUpdated: "头像已更新")
 
     static let en = ErrorStrings(
         connected: { email, warning in "Connected as \(email)\(warning)" },
@@ -147,6 +145,5 @@ extension ErrorStrings {
         nicknameChanged: { name in "Nickname changed to \(name)" },
         pickAvatar: "Choose an image to use as your avatar",
         avatarTooLarge: "Avatar image is over 8 MB — pick a smaller one",
-        avatarUpdated: "Avatar updated",
-        avatarRemoved: "Avatar removed")
+        avatarUpdated: "Avatar updated")
 }
