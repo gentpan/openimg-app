@@ -391,6 +391,11 @@ final class AppModel: ObservableObject {
     @Published var urlDraft = ""
     /// 本机 Image Playground 弹窗开着没有。
     @Published var localGenOpen = false
+    /// 刷新图标转不转。
+    @Published var refreshing = false
+    /// 正在跑的刷新次数。连点两下时,转圈要等**最后一次**结束才停——用布尔量
+    /// 的话第一次结束就把圈停了,而第二次还在跑,看着像刷新提前收工了。
+    private var refreshRuns = 0
     @Published var dropping = false
 
     /// Overall progress across the batch, weighted by file size — a 40 KB icon
@@ -907,6 +912,32 @@ final class AppModel: ObservableObject {
 
     /// What the refresh control and ⌘R do, which depends on the page: the
     /// gallery reloads its page, the overview reloads its numbers.
+    /// 点了刷新按钮。**无论如何都转**,并且真的去取数据。
+    ///
+    /// 单独一个方法而不是直接调 refreshCurrent:按钮要的是"点了有反应",而
+    /// refreshCurrent 是"把当前页的数据取一遍",两件事的时长不是一回事——
+    /// 本地缓存命中或者接口很快时,它可能几十毫秒就回来了,转圈闪一下就没,
+    /// 用户看到的等同于"点了没反应"。所以这里兜一个最短时长。
+    ///
+    /// 不设 disabled:忙的时候点一下什么都不发生,是这个按钮原来最让人困惑的
+    /// 地方——用户不知道是没点中、还是坏了、还是在等。
+    func refreshTapped() {
+        Task { @MainActor in
+            refreshRuns += 1
+            refreshing = true
+            let started = Date()
+            await refreshCurrent()
+            // 最短转够 0.6 秒。低于这个数,转一下和闪一下在眼睛里没有区别。
+            let left = 0.6 - Date().timeIntervalSince(started)
+            if left > 0 { try? await Task.sleep(for: .seconds(left)) }
+            refreshRuns -= 1
+            if refreshRuns <= 0 {
+                refreshRuns = 0
+                refreshing = false
+            }
+        }
+    }
+
     func refreshCurrent() async {
         switch section {
         case .gallery: await load()

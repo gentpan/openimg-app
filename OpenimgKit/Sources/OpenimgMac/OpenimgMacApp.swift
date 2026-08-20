@@ -49,7 +49,9 @@ struct OpenimgMacApp: App {
                 .disabled(!model.connected)
             }
             CommandGroup(after: .toolbar) {
-                Button(L.s.common.refresh) { Task { await model.refreshCurrent() } }
+                // 走和按钮同一条路,⌘R 也要让图标转起来——两条入口做同一件
+                // 事却只有一条给反馈,用键盘的人会以为快捷键没生效。
+                Button(L.s.common.refresh) { model.refreshTapped() }
                     .keyboardShortcut("r")
                     .disabled(!model.connected)
             }
@@ -180,8 +182,9 @@ struct TopBar: View {
             }
 
             ToolCluster {
-                ToolTile(icon: "arrow.clockwise", help: L.s.common.refresh, disabled: model.busy) {
-                    Task { await model.refreshCurrent() }
+                ToolTile(icon: "arrow.clockwise", help: L.s.common.refresh,
+                         spinning: model.refreshing) {
+                    model.refreshTapped()
                 }
             }
         }
