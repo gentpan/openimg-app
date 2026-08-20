@@ -805,28 +805,30 @@ final class AppModel: ObservableObject {
 
     var streak: Int { checkins.first?.streak ?? 0 }
 
-    /// The server records days as UTC `yyyy-mm-dd`, so "today" has to be asked
-    /// in UTC too — comparing against a local date puts the app a day out for
-    /// anyone east of Greenwich, which is most of its users.
+    /// 签到的「一天」按**本机时区**问,不是 UTC。
+    ///
+    /// 服务端已经改成按账号上存的时区算日界(checkin.TodayIn),而账号上那个
+    /// 时区正是本 app 每次连上时报上去的 TimeZone.current——两边看的是同一个
+    /// 钟。这里曾经写死 UTC:那是服务端还按 UTC 记天时的口径,服务端改了之后
+    /// 这里没跟上,表现是东五区的凌晨 0 点到 5 点之间,新的一天已经开始、服务
+    /// 端也肯收签到,app 却显示「今天已签到」把按钮灰着——每天头几个小时签不了。
     var checkedInToday: Bool {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = cal.timeZone
+        f.timeZone = .current
         return checkins.contains { $0.date == f.string(from: Date()) }
     }
 
-    /// Monday-first, because that is how the streak reads to a user even
-    /// though the server keys days in UTC.
+    /// Monday-first。日界与 checkedInToday 同一口径:本机时区,而不是 UTC——
+    /// 否则周条上「今天」的高亮每天要晚几个小时才挪到正确的那一格。
     var thisWeek: [CheckinDay] {
         var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
+        cal.timeZone = .current
         cal.firstWeekday = 2
         cal.locale = L.locale
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = cal.timeZone
+        f.timeZone = .current
 
         // 星期缩写交给 Locale:中文得「一…日」,英文得「M…S」,不必自己维护
         // 两份表。符号表从周日排起,而这一周从周一算,所以取值时挪一位。
