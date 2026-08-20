@@ -42,9 +42,31 @@ struct LocalGenSheet: ViewModifier {
     let concept: String
     let onImage: (URL) -> Void
 
+    @ViewBuilder
     func body(content: Content) -> some View {
         #if canImport(ImagePlayground)
-        if #available(macOS 15.1, *) {
+        if #available(macOS 15.4, *) {
+            content
+                .imagePlaygroundSheet(
+                    isPresented: $presented,
+                    concept: concept,
+                    onCompletion: onImage
+                )
+                // 只放行**在本机算**的那三种。
+                //
+                // 不限的话,系统那个风格菜单里会多出一条 ChatGPT——它不是本机生
+                // 成,会把提示词发给 OpenAI。而这个入口的按钮写着「本机生成、不
+                // 耗次数」:一个承诺不出机器的入口,菜单里却藏着一条把内容送出
+                // 去的路,那不是给用户多一个选择,是让那句承诺变成假话。
+                //
+                // Genmoji 也不放:它出的是表情贴纸,和「插画 · 动画 · 素描」这个
+                // 说法对不上。
+                .imagePlaygroundGenerationStyle(
+                    .illustration,
+                    in: [.animation, .illustration, .sketch]
+                )
+        } else if #available(macOS 15.1, *) {
+            // 15.1–15.3 没有这个修饰器,只能用系统的默认列表。
             content.imagePlaygroundSheet(
                 isPresented: $presented,
                 concept: concept,
