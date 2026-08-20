@@ -20,10 +20,13 @@ let package = Package(
         .library(name: "OpenimgKit", targets: ["OpenimgKit"]),
         .executable(name: "KitCheck", targets: ["KitCheck"]),
         .executable(name: "OpenimgMac", targets: ["OpenimgMac"]),
+        .executable(name: "UpdateTool", targets: ["UpdateTool"]),
     ],
     targets: [
         .target(name: "OpenimgKit"),
         .executableTarget(name: "KitCheck", dependencies: ["OpenimgKit"]),
         .executableTarget(name: "OpenimgMac", dependencies: ["OpenimgKit"]),
+        // 打包与发布脚本用的小工具,不进 .app。
+        .executableTarget(name: "UpdateTool", dependencies: ["OpenimgKit"]),
     ]
 )

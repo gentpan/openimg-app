@@ -17,6 +17,7 @@ struct SettingsStrings: Sendable {
     // 外观
     let appearance: String
     let appAndDevice: String
+    let appVersion: String
     let language: String
     let languageHint: String
     let brandColor: String
@@ -204,6 +205,7 @@ extension SettingsStrings {
 
         appearance: "外观",
         appAndDevice: "应用与设备",
+        appVersion: "版本",
         language: "界面语言",
         languageHint: "切换后立即生效",
         brandColor: "品牌色",
@@ -390,6 +392,7 @@ extension SettingsStrings {
 
         appearance: "Appearance",
         appAndDevice: "App & Device",
+        appVersion: "Version",
         language: "Language",
         languageHint: "Applies immediately",
         brandColor: "Brand color",

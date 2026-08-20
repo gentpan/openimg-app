@@ -58,8 +58,27 @@ cp "$ROOT/Resources/Fonts/LICENSE-Ubuntu.txt" "$APP/Contents/Resources/"
 # window is closed.
 # 版本号先取好。heredoc 仍用带引号的形式——去掉引号会让 plist 正文里任何
 # $ 都被当成变量展开,那是给以后埋雷;所以改成写完之后替换占位符。
-APP_VERSION="${APP_VERSION:-0.2.0}"
-APP_BUILD="${APP_BUILD:-1}"
+#
+# 默认版本号取自 git 上最新的 tag,而不是写死一个数。写死的那个(曾经是
+# 0.2.0)会在发过 0.3.0 之后继续骗人:直接跑 ./package-mac.sh 出来的包,
+# 「关于」里印的是一个几个月前的版本,而它跑的是当前代码。
+APP_VERSION="${APP_VERSION:-$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo 0.0.0)}"
+
+# build 号由版本号算出来,算法的唯一权威在 OpenimgKit/UpdateVersion.swift,
+# 由 KitCheck 钉住。不在这里用 awk 再写一遍同一个公式:两处各写各的迟早对
+# 不上,而对不上的表现是「明明发了新版,老客户端检测不到」——不报错、不打
+# 日志,只是永远没有更新。
+#
+# 原来这里恒为 1。CFBundleVersion 的单调性正是系统用来判断"哪个更新"的依
+# 据,恒为 1 等于把那条依据整个作废了。
+if [[ -z "${APP_BUILD:-}" ]]; then
+  APP_BUILD=$(xcrun swift run --package-path "$PKG" -c "$CONFIG" UpdateTool \
+                build-number "$APP_VERSION" 2>/dev/null | tail -1)
+  [[ "$APP_BUILD" =~ ^[0-9]+$ ]] || {
+    echo "算不出 build 号(版本号 $APP_VERSION)——见 SemanticVersion.buildNumber" >&2
+    exit 1
+  }
+fi
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

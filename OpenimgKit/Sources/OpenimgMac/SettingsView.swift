@@ -587,6 +587,21 @@ struct SettingsView: View {
 
                 Divider().overlay(Color.white.opacity(0.06))
 
+                // 版本号。
+                //
+                // 在这之前 app 里没有任何地方显示自己的版本——用户想说"我这版
+                // 有个问题"的时候只能去看文件信息,而那还得先找到 .app 在哪。
+                HStack(alignment: .firstTextBaseline) {
+                    Text(L.s.settings.appVersion).font(.callout)
+                    Spacer()
+                    Text(AppVersion.display)
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                Divider().overlay(Color.white.opacity(0.06))
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text(L.s.settings.deviceNote)
                         .font(.caption).foregroundStyle(.secondary)

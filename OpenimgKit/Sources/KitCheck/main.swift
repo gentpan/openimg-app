@@ -2715,6 +2715,75 @@ do {
 }
 
 
+// MARK: - 版本号与 build 号
+
+section("版本号解析")
+
+do {
+    check("解得出 0.3.0", SemanticVersion("0.3.0") == SemanticVersion(major: 0, minor: 3, patch: 0))
+    // git tag 带 v、Info.plist 不带,两边的字符串迟早会在某处相遇。
+    check("吃掉前导的 v", SemanticVersion("v1.2.3") == SemanticVersion(major: 1, minor: 2, patch: 3))
+    check("认得出预发布标识",
+          SemanticVersion("1.0.0-beta.1")?.prerelease == "beta.1")
+    // 构建元数据按 semver 不参与比较。
+    check("丢掉 + 之后的构建元数据",
+          SemanticVersion("1.2.3+abc") == SemanticVersion(major: 1, minor: 2, patch: 3))
+
+    // 不宽容的地方:位数不对就是解不出,而不是补零——补零意味着把一个写错的
+    // 版本号悄悄接受下来。
+    check("1.2 解不出(不补零)", SemanticVersion("1.2") == nil)
+    check("1.2.3.4 解不出", SemanticVersion("1.2.3.4") == nil)
+    check("空串解不出", SemanticVersion("") == nil)
+    check("v 后面没东西解不出", SemanticVersion("v") == nil)
+    check("带减号但没内容解不出", SemanticVersion("1.2.3-") == nil)
+    // Int(" 1") 会成功,而那不该被当成合法版本号。
+    check("段里有空格解不出", SemanticVersion("1. 2.3") == nil)
+    check("段里有字母解不出", SemanticVersion("1.2.x") == nil)
+    check("负数解不出", SemanticVersion("1.-2.3") == nil)
+}
+
+section("版本号比较")
+
+do {
+    func v(_ s: String) -> SemanticVersion { SemanticVersion(s)! }
+    check("主版本优先", v("1.0.0") > v("0.99.99"))
+    check("次版本次之", v("0.4.0") > v("0.3.99"))
+    check("修订号最后", v("0.3.1") > v("0.3.0"))
+    check("相同即相等", v("0.3.0") == v("0.3.0"))
+    // 这一条是降级防线的基础:清单说 0.3.0 而本机就是 0.3.0 时不该提示更新。
+    check("相同版本不构成更新", !(v("0.3.0") > v("0.3.0")))
+    check("预发布小于同号正式版", v("1.0.0-beta") < v("1.0.0"))
+    check("两个预发布按字典序", v("1.0.0-beta.1") < v("1.0.0-beta.2"))
+    check("正式版不小于预发布", !(v("1.0.0") < v("1.0.0-beta")))
+}
+
+section("build 号")
+
+do {
+    func v(_ s: String) -> SemanticVersion { SemanticVersion(s)! }
+    // 这三条钉住的是打包脚本实际会写进 CFBundleVersion 的值。改了公式而没改
+    // 这里,就是让老客户端检测不到新版——不报错、不打日志。
+    check("0.3.0 → 3000", v("0.3.0").buildNumber == 3000)
+    check("1.0.0 → 1000000", v("1.0.0").buildNumber == 1_000_000)
+    check("0.0.1 → 1", v("0.0.1").buildNumber == 1)
+
+    // 单调性是 CFBundleVersion 的全部意义所在。
+    let ladder = ["0.0.1", "0.1.0", "0.3.0", "0.3.1", "0.99.999", "1.0.0", "2.0.0"].map(v)
+    var monotone = true
+    for (a, b) in zip(ladder, ladder.dropFirst()) where !(a.buildNumber! < b.buildNumber!) {
+        monotone = false
+    }
+    check("版本升序时 build 号严格递增", monotone)
+
+    // 预发布版没有 build 号:它和同号正式版的数字三元组相同,给同一个数会打破
+    // 单调性,而单调性正是系统判断"哪个更新"的依据。宁可明确不支持。
+    check("预发布版没有 build 号", v("1.0.0-beta").buildNumber == nil)
+    // 进位余量:留 1000 而不是 100,patch 号在修 bug 密集的一周里涨得很快。
+    check("次版本到 999 仍可用", v("0.999.0").buildNumber == 999_000)
+    check("次版本超过 999 拒绝给号", v("0.1000.0").buildNumber == nil)
+}
+
+
 print("\n\(checks - failures)/\(checks) 通过")
 if failures > 0 {
     print("\(failures) 项失败")
