@@ -10,6 +10,12 @@ struct SettingsView: View {
     @State private var draftName: String?
     @State private var editingName = false
     @State private var nameHovering = false
+    /// 失焦之后延迟一拍退回只读态的那个任务。见 scheduleNameRevert。
+    @State private var nameRevert: Task<Void, Never>?
+    /// 指针是不是正压在「保存」上。见 scheduleNameRevert 里的第二道闸。
+    @State private var saveHovering = false
+    /// 已经失焦、等着退回只读态。
+    @State private var namePendingRevert = false
     @State private var code = ""
     @State private var newPassword = ""
     @State private var pkExpanded = false
@@ -170,9 +176,13 @@ struct SettingsView: View {
     /// 了标签;二是失焦即存意味着点一下别处就把改动写进去了,而用户可能只是
     /// 点开了旁边的菜单又退回来。
     ///
-    /// 失焦既不保存也不丢弃,而是留在编辑态。丢弃会吃掉刚打的字;自动保存
-    /// 就把这颗按钮变成了摆设——既然有明确的提交动作,提交就只能由它发生。
-    /// 想放弃按 Esc。
+    /// 点到别处就退回只读态,草稿丢掉。保存只由「保存」按钮和回车发生——
+    /// 失焦自动保存会把那颗按钮变成摆设,而用户可能只是点开了旁边的菜单。
+    ///
+    /// 这里原来是"失焦既不保存也不丢弃,留在编辑态,想放弃按 Esc"。想法是别
+    /// 吃掉刚打的字,但代价是**没改过就出不来**:点开一看不想改了,唯一的出路
+    /// 是按 Esc,而没人知道要按 Esc。一个进得去出不来的状态,比丢掉一个昵称的
+    /// 代价大得多——何况昵称就那么几个字,重打一遍不算什么。
     private func nameField(_ a: Account) -> some View {
         HStack(spacing: 8) {
             if editingName {
@@ -195,10 +205,20 @@ struct SettingsView: View {
                     .onSubmit { commitName() }
                     .onExitCommand { cancelName() }
                     .focused($nameFocused)
+                    .onChange(of: nameFocused) { _, focused in
+                        if !focused { scheduleNameRevert() }
+                    }
 
                 Button(L.s.common.save) { commitName() }
                     .buttonStyle(BrandButton())
                     .controlSize(.small)
+                    .onHover { hovering in
+                        saveHovering = hovering
+                        // 指针离开时补做一次:焦点丢的那一刻指针要是正好停在
+                        // 这颗按钮上,那次撤销会被第二道闸挡掉,不补的话就又
+                        // 卡回"出不来"的状态了。
+                        if !hovering { tryNameRevert() }
+                    }
                     // 名字没动就不给按:一次什么都不改的写请求,除了让头像和
                     // 昵称闪一下重新加载之外没有任何作用。
                     .disabled((draftName ?? a.name) == a.name)
@@ -223,6 +243,7 @@ struct SettingsView: View {
                     .contentShape(Rectangle())
                     .onHover { nameHovering = $0 }
                     .onTapGesture {
+                        namePendingRevert = false
                         editingName = true
                         // 下一拍再要焦点:这一拍 TextField 还没进视图树。
                         DispatchQueue.main.async { nameFocused = true }
@@ -234,13 +255,49 @@ struct SettingsView: View {
         .animation(.easeOut(duration: 0.12), value: nameHovering)
     }
 
+    /// 失焦之后退回只读态。**延迟一拍**是必须的。
+    ///
+    /// 点「保存」这个动作本身会先让输入框失焦:mouseDown 时焦点就走了,而按钮
+    /// 的 action 要到 mouseUp 才触发,中间隔着一段真实的时间。立刻退的话按钮
+    /// 在自己的 action 跑起来之前就已经从视图树里消失了——那颗按钮会变成永远
+    /// 点不动,而这种"点了没反应"最难查。
+    ///
+    /// 两道闸,因为任何一道单独都不够:
+    ///
+    ///   - **延时**挡得住一次正常的点击(mouseDown 到 mouseUp 通常不到 150ms),
+    ///     但挡不住按住不放——按 300ms 再松手,撤销已经先跑完了。
+    ///   - **悬浮**挡得住按住不放,但指针刚落到按钮上那一瞬 onHover 未必已经
+    ///     更新,单靠它会漏掉最快的那种点击。
+    ///
+    /// 键盘那条路不受影响:回车走 onSubmit,直接提交,根本不经过这里。
+    private func scheduleNameRevert() {
+        guard editingName else { return }
+        namePendingRevert = true
+        nameRevert?.cancel()
+        nameRevert = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(220))
+            guard !Task.isCancelled else { return }
+            tryNameRevert()
+        }
+    }
+
+    /// 条件都满足就退回只读态。两个入口调它:延时到点,以及指针离开「保存」。
+    private func tryNameRevert() {
+        guard namePendingRevert, editingName, !nameFocused, !saveHovering else { return }
+        cancelName()
+    }
+
     private func cancelName() {
+        nameRevert?.cancel(); nameRevert = nil
+        namePendingRevert = false
         draftName = nil
         editingName = false
         nameFocused = false
     }
 
     private func commitName() {
+        nameRevert?.cancel(); nameRevert = nil
+        namePendingRevert = false
         defer { editingName = false; nameFocused = false }
         guard let draft = draftName else { return }
         // Dropped before the request, not after: `saveNickname` refreshes the
