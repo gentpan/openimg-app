@@ -130,6 +130,10 @@ fi
 
 echo
 echo "6/6 生成更新清单…"
+# release.sh 里也要定义 PKG:它只在 package-mac.sh 里有,而那是另一个进程。
+# set -u 下漏了这行的表现是——GitHub Release 已经建好、清单却发不出去,崩在
+# "unbound variable"。发布走到一半断掉,比一开始就失败难收拾得多。
+PKG="$ROOT/OpenimgKit"
 TOOL="$(xcrun swift build --package-path "$PKG" -c release --show-bin-path)/UpdateTool"
 xcrun swift build --package-path "$PKG" -c release --product UpdateTool >/dev/null
 
