@@ -2,7 +2,7 @@ import Foundation
 
 /// 登录页与 OAuth 流程的文案。
 ///
-/// 标题拆成 `headerPrefix` + 品牌字（"Open"/"img" 用 Ubuntu 单独排），所以这里
+/// 标题拆成 `headerPrefix` + 品牌字（"Open"/"Img" 用 Ubuntu 单独排），所以这里
 /// 只放前半句,末尾那个空格是排版的一部分,别顺手删掉。
 struct LoginStrings: Sendable {
     let serverSwitch: String

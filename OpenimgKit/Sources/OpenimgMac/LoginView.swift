@@ -171,7 +171,7 @@ struct LoginView: View {
             // 字体并进同一行。
             HStack(spacing: 0) {
                 Text("Open").font(.brand(34, .bold))
-                Text("img").font(.brand(34, .bold)).foregroundStyle(Color.brand)
+                Text("Img").font(.brand(34, .bold)).foregroundStyle(Color.brand)
             }
             Text(L.s.login.tagline).font(.caption).foregroundStyle(.secondary)
         }

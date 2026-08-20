@@ -25,7 +25,7 @@ struct OpenimgMacApp: App {
     init() { BrandFont.register() }
 
     var body: some Scene {
-        Window("Openimg", id: "main") {
+        Window("OpenImg", id: "main") {
             RootView(model: model)
                 .tint(.brand)
                 // Dark regardless of the system setting. See Theme.swift: the
@@ -234,7 +234,7 @@ struct Sidebar: View {
             // 时那块地方看着是空的而不是宽松的。
             HStack(spacing: 0) {
                 Text("Open").font(.brand(26, .bold))
-                Text("img").font(.brand(26, .bold)).foregroundStyle(Color.brand)
+                Text("Img").font(.brand(26, .bold)).foregroundStyle(Color.brand)
             }
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 12)

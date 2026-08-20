@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Wraps the OpenimgMac build product in a real Openimg.app bundle.
-# (SwiftPM 目标名保留 OpenimgMac 以区分未来的 iOS 端;用户可见的名字一律 Openimg。)
+# Wraps the OpenimgMac build product in a real OpenImg.app bundle.
+# (SwiftPM 目标名保留 OpenimgMac 以区分未来的 iOS 端;用户可见的名字一律 OpenImg。)
 #
 # A bare SwiftPM executable does not work for this app, and the failure is
 # quiet: MenuBarExtra has nowhere to install a status item without a bundle, so
@@ -33,7 +33,7 @@ fi
 CONFIG=${1:-debug}
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG="$ROOT/OpenimgKit"
-APP="$ROOT/build/Openimg.app"
+APP="$ROOT/build/OpenImg.app"
 
 echo "构建 ($CONFIG)…"
 xcrun swift build --package-path "$PKG" -c "$CONFIG" --product OpenimgMac >/dev/null
@@ -42,7 +42,7 @@ BIN="$(xcrun swift build --package-path "$PKG" -c "$CONFIG" --show-bin-path)/Ope
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/Openimg"
+cp "$BIN" "$APP/Contents/MacOS/OpenImg"
 cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 # 紫色主题那张。Info.plist 只认 AppIcon(绿),紫的是运行时用
 # NSApp.applicationIconImage 换上去的,所以它只需要在 Resources 里能被找到。
@@ -84,10 +84,10 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleExecutable</key>          <string>Openimg</string>
+  <key>CFBundleExecutable</key>          <string>OpenImg</string>
   <key>CFBundleIdentifier</key>          <string>io.openimg.mac</string>
-  <key>CFBundleName</key>                <string>Openimg</string>
-  <key>CFBundleDisplayName</key>         <string>Openimg</string>
+  <key>CFBundleName</key>                <string>OpenImg</string>
+  <key>CFBundleDisplayName</key>         <string>OpenImg</string>
   <key>CFBundlePackageType</key>         <string>APPL</string>
   <key>CFBundleShortVersionString</key>  <string>@@APP_VERSION@@</string>
   <key>CFBundleVersion</key>             <string>@@APP_BUILD@@</string>
@@ -171,4 +171,4 @@ echo "已打包：$APP"
 codesign -dv "$APP" 2>&1 | grep -E "Identifier|Signature|TeamIdentifier" | sed 's/^/  /'
 echo
 echo "运行：open '$APP'"
-echo "退出：pkill -x Openimg"
+echo "退出：pkill -x OpenImg"
