@@ -60,31 +60,17 @@ struct GalleryView: View {
         .padding(.bottom, 14)
     }
 
-    /// The capsule row from the reference. It doubles as the selection bar:
-    /// once something is picked the same strip carries the actions, so the
-    /// layout does not jump when a checkbox is ticked.
+    /// 排序 tabs。选中操作不在这儿——它挪到了底栏「全选本页」左边:全选是在
+    /// 底栏点的,结果却跳到页面顶上,视线要横跨整屏去找删除按钮。挪走之后这
+    /// 一行不再有分支,排序也不会在勾选时凭空消失。
     private var filters: some View {
         HStack(spacing: 10) {
-            if model.selection.isEmpty {
-                PillRow(items: SortKey.allCases, label: { L.s.gallery.sortLabel($0) },
-                        icon: { $0.icon }, selection: sortBinding)
-            } else {
-                HStack(spacing: 8) {
-                    Text(L.s.gallery.selectedCount(model.selection.count))
-                        .font(.callout).foregroundStyle(.white)
-                    Button(L.s.common.delete) { Task { await model.deleteSelected() } }
-                        .buttonStyle(DangerButton())
-                    Button(L.s.common.cancel) { model.selection = [] }
-                        .buttonStyle(QuietButton())
-                }
-                .padding(.leading, 4)
-            }
-
+            PillRow(items: SortKey.allCases, label: { L.s.gallery.sortLabel($0) },
+                    icon: { $0.icon }, selection: sortBinding)
             Spacer()
         }
         .padding(.horizontal, 18)
         .padding(.bottom, 12)
-        .animation(.easeInOut(duration: 0.16), value: model.selection.isEmpty)
     }
 
     /// 整库导出到本地目录。放在常驻的状态栏而不是 filters 行——搜索无结果
@@ -133,6 +119,16 @@ struct GalleryView: View {
                 Text(L.s.gallery.usedSpace(model.bytes(q.usedBytes)))
             }
             Spacer()
+            // 选中操作紧挨「全选本页」左边:点了全选,下一步(删除/取消)就出
+            // 现在手边,不用抬头去页面顶上找。
+            if !model.selection.isEmpty {
+                Text(L.s.gallery.selectedCount(model.selection.count))
+                    .font(.callout).foregroundStyle(.white)
+                Button(L.s.common.delete) { Task { await model.deleteSelected() } }
+                    .buttonStyle(DangerButton())
+                Button(L.s.common.cancel) { model.selection = [] }
+                    .buttonStyle(QuietButton())
+            }
             // 三颗同款(icon + 名字),因为它们是同一类事:对当前这一页做点什么。
             // 原来「全选本页」在上面那排、「每页张数」在顶栏,三件同类的事分散
             // 在三个地方,每次要找。
@@ -181,6 +177,7 @@ struct GalleryView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
+        .animation(.easeInOut(duration: 0.16), value: model.selection.isEmpty)
     }
 }
 
