@@ -276,9 +276,14 @@ public struct AIQuotaReadout: Sendable, Equatable {
     public let fromPicbi: Bool
     public let usedToday: Int
     public let dailyLimit: Int
-    /// 本月剩余与配给量。剩余可能大于配给量——签到会往上加。
+    /// 本月余额与每月配给。
+    ///
+    /// **余额是钱包,不是消耗进度。** 每月重置为配给量,签到会往上加、生成往下
+    /// 扣,所以余额完全可能大于配给(配 50、签到加到 55)。别拿「配给 − 余额」
+    /// 当"本月已用"——那对钱包是个恒为 0 附近的无意义数字,还会和「今天已用」
+    /// 打架(今天用了 1,"本月已用"却是 0)。
     public let monthlyLeft: Int
-    public let monthlyTotal: Int
+    public let monthlyGrant: Int
     public let picbi: PicbiBalance
     /// 现在为什么不能生成。nil 表示能生成。
     public let blocked: Blocked?
@@ -306,7 +311,7 @@ public struct AIQuotaReadout: Sendable, Equatable {
         usedToday = s.usedToday
         dailyLimit = s.dailyLimit
         monthlyLeft = s.credits
-        monthlyTotal = max(s.monthly, s.credits)
+        monthlyGrant = s.monthly
 
         picbi = {
             guard s.picbiLinked else { return .none }

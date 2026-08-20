@@ -3197,7 +3197,7 @@ do {
 
     // 签到会把余额加到超过月配给量,进度条不能因此超过 1。
     check("签到加过之后总量取较大的那个",
-          AIQuotaReadout(status(credits: 80, monthly: 50)).monthlyTotal == 80)
+          AIQuotaReadout(status(credits: 80, monthly: 50)).monthlyGrant == 50)
 }
 
 

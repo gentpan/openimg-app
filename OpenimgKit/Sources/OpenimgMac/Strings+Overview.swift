@@ -25,7 +25,8 @@ struct OverviewStrings: Sendable {
     let storageBindTitle: String
     let storageBindBody: String
     let storageBindAction: String
-    let aiMonthlyUsed: String
+    let aiMonthlyBalance: String
+    let aiMonthlyBalanceValue: @Sendable (Int, Int) -> String
 
     // 存储构成
     let compositionTitle: String
@@ -94,7 +95,8 @@ extension OverviewStrings {
         storageBindTitle: "还没绑定自己的存储",
         storageBindBody: "绑定 R2 / S3 之后，新上传直接进你自己的桶，不再占平台配额。",
         storageBindAction: "去绑定",
-        aiMonthlyUsed: "本月已用",
+        aiMonthlyBalance: "本月余额",
+        aiMonthlyBalanceValue: { left, grant in "\(left) 次 · 每月配 \(grant)" },
 
         compositionTitle: "存储构成",
         partPrimary: "主图",
@@ -165,7 +167,8 @@ extension OverviewStrings {
         storageBindTitle: "No storage of your own yet",
         storageBindBody: "Bind R2 or S3 and new uploads go straight to your own bucket, outside your plan quota.",
         storageBindAction: "Bind one",
-        aiMonthlyUsed: "Used this month",
+        aiMonthlyBalance: "Monthly balance",
+        aiMonthlyBalanceValue: { left, grant in "\(left) left · \(grant)/month" },
 
         compositionTitle: "Storage Breakdown",
         partPrimary: "Primary",

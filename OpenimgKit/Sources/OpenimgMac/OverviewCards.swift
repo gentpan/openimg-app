@@ -177,9 +177,13 @@ struct AIQuotaCard: View {
                     // 含义,比不填色更糟。
                     line(L.s.overview.aiToday, "\(r.usedToday) / \(r.dailyLimit)")
                     dots(used: r.usedToday, total: r.dailyLimit)
-                    line(L.s.overview.aiMonthlyUsed,
-                         "\(r.monthlyTotal - r.monthlyLeft) / \(r.monthlyTotal)")
-                    bar(used: r.monthlyTotal - r.monthlyLeft, total: r.monthlyTotal)
+                    // 本月是**余额**,不是消耗进度:签到会加、生成会扣,可能
+                    // 超过配给。条按"还剩多少"画(电量式),和上面那排"已用几
+                    // 格"的点方向相反——但把钱包硬画成消耗条才是真的误导:
+                    // 「本月已用 0/55」和「今天已用 1」当场打架。
+                    line(L.s.overview.aiMonthlyBalance,
+                         L.s.overview.aiMonthlyBalanceValue(r.monthlyLeft, r.monthlyGrant))
+                    bar(used: min(r.monthlyLeft, r.monthlyGrant), total: r.monthlyGrant)
 
                     switch r.picbi {
                     case .none:
