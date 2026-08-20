@@ -400,7 +400,11 @@ private struct SidebarRow: View {
                     // 只放大文字,不放大整行。整行一起缩放的话图标也跟着变大,
                     // 那一列的对齐就散了——而图标列是这一栏唯一的竖直基准。
                     // scaleEffect 不参与布局,所以右端那颗小圆点不会被推走。
-                    .scaleEffect(hovering && !active ? 1.1 : 1, anchor: .leading)
+                    //
+                    // **不排除激活行。** 排除的话点下去那一刻条件立刻为假,而
+                    // 指针还停在上面——文字当场缩回去,每次点击都要看一次收缩。
+                    // 放大是"指针在这儿"的反馈,和"这是不是当前页"无关。
+                    .scaleEffect(hovering ? 1.1 : 1, anchor: .leading)
                 Spacer(minLength: 0)
                 if dot {
                     Circle()
