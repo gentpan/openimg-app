@@ -10,6 +10,12 @@ import OpenimgKit
 /// changes, and cannot be selected or right-clicked like anything else in the
 /// app. The point of a native client is that it behaves like one.
 struct OverviewView: View {
+    // 三张图各自的入场进度。分开而不是共用一个:它们的入场方式不同(扫开 /
+    // 生长 / 画出来),共用一个进度就没法给折线单独一条更长的曲线。
+    @State private var revealDonut: Double = 0
+    @State private var revealFormats: Double = 0
+    @State private var revealTrend: Double = 0
+
     @ObservedObject var model: AppModel
 
     /// 卡片的一条序列。行怎么切由 CardGrid 按列数算,这里只声明顺序和跨度。
@@ -124,6 +130,16 @@ struct OverviewView: View {
                     }
                 }
                 .chartYAxis { AxisMarks(position: .leading) }
+                // 只遮绘图区,不遮坐标轴——把刻度也一起擦掉的话,画到一半的
+                // 图看着不像在画,像是没加载完。
+                .chartPlotStyle { plot in
+                    plot.mask(alignment: .leading) {
+                        GeometryReader { g in
+                            Rectangle().frame(width: g.size.width * revealTrend)
+                        }
+                    }
+                }
+                .reveal($revealTrend, duration: Reveal.draw)
                 .frame(minHeight: 110, maxHeight: .infinity)
                 Text(L.s.overview.trendNote(points.reduce(0) { $0 + $1.count }))
                     .font(.caption2).foregroundStyle(.tertiary)
@@ -161,6 +177,10 @@ struct OverviewView: View {
                     }
                     .chartLegend(.hidden)
                     .frame(height: 124)
+                    // 遮罩加在 overlay **之前**:加在后面的话中间那行字会跟着
+                    // 被扇形切掉一半,扫到一半时看着像渲染坏了。
+                    .mask { Wedge(end: revealDonut) }
+                    .reveal($revealDonut)
                     .overlay {
                         VStack(spacing: 0) {
                             Text(model.bytes(s.sizeStored))
@@ -211,9 +231,15 @@ struct OverviewView: View {
     private var formatCard: some View {
         PanelCard(L.s.overview.formatsTitle, "doc.on.doc") {
             if let s = model.summary, !s.byFormat.isEmpty {
+                // 横轴的定义域钉死在最大那根上,不让它跟着数据缩放。
+                //
+                // 少了这一句,"把每根乘上进度"是没有效果的:所有值同比例缩小,
+                // 自动推出来的定义域也同比例缩小,画出来和原图一模一样。
+                let widest = max(1, s.byFormat.map(\.bytes).max() ?? 1)
                 Chart(Array(s.byFormat.enumerated()), id: \.element.id) { i, f in
                     BarMark(
-                        x: .value(L.s.overview.chartSizeLabel, f.bytes),
+                        x: .value(L.s.overview.chartSizeLabel,
+                                  Double(f.bytes) * revealFormats),
                         y: .value(L.s.overview.chartFormatLabel, f.ext.uppercased())
                     )
                     .foregroundStyle(Self.formatPalette[i % Self.formatPalette.count])
@@ -226,7 +252,8 @@ struct OverviewView: View {
                 .chartXAxis(.hidden)
                 // Room on the right for the annotation, which would otherwise
                 // be clipped by the plot area on the widest bar.
-                .chartXScale(range: .plotDimension(endPadding: 66))
+                .chartXScale(domain: 0...Double(widest), range: .plotDimension(endPadding: 66))
+                .reveal($revealFormats)
                 .frame(height: CGFloat(s.byFormat.count) * 30 + 12)
             } else {
                 placeholder

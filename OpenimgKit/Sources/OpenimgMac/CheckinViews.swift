@@ -72,7 +72,8 @@ struct MilestoneBar: View {
                         .font(.caption).foregroundStyle(Color.brand)
                 }
             }
-            ProgressBar(value: total > 0 ? Double(current) / Double(total) : 0)
+            ProgressBar(animatesIn: true,
+                        value: total > 0 ? Double(current) / Double(total) : 0)
                 .frame(height: 6)
             Text(L.s.common.dayProgress(current, total))
                 .font(.caption2).foregroundStyle(.tertiary)

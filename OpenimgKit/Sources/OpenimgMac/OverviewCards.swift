@@ -10,6 +10,7 @@ import OpenimgKit
 /// 图。合并规则里有三条写错了不会报错,所以那部分在 Kit 里、由自检钉住。
 struct StorageCard: View {
     @ObservedObject var model: AppModel
+    @State private var reveal: Double = 0
 
     private var slots: [StorageSlot] {
         StorageOverview.slots(profiles: model.storageProfiles,
@@ -48,6 +49,7 @@ struct StorageCard: View {
                 }
             }
         }
+        .reveal($reveal)
     }
 
     private var bindPrompt: some View {
@@ -107,7 +109,9 @@ struct StorageCard: View {
                     Capsule().fill(.white.opacity(0.06))
                     Capsule()
                         .fill(barColor(s))
-                        .frame(width: max(2, geo.size.width * s.share))
+                        .frame(width: max(s.share > 0 ? 2 : 0,
+                                          geo.size.width * s.share * reveal))
+                        .animation(Reveal.change, value: s.share)
                 }
             }
             .frame(height: 4)
@@ -146,6 +150,8 @@ struct StorageCard: View {
 /// 让人以为总数是它们的和,所以主数字只有一个,另外两行是解释它从哪来。
 struct AIQuotaCard: View {
     @ObservedObject var model: AppModel
+    @State private var reveal: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if let s = model.aiStatus, s.enabled {
@@ -190,6 +196,7 @@ struct AIQuotaCard: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .reveal($reveal)
             }
         }
     }
@@ -201,9 +208,19 @@ struct AIQuotaCard: View {
         if total > 0 && total <= 12 {
             HStack(spacing: 5) {
                 ForEach(0..<total, id: \.self) { i in
+                    let on = i < used
                     Circle()
-                        .fill(i < used ? AnyShapeStyle(Color.brand) : AnyShapeStyle(.quaternary))
+                        .fill(.quaternary)
                         .frame(width: 9, height: 9)
+                        .overlay {
+                            if on {
+                                Circle().fill(Color.brand)
+                                    .scaleEffect(reveal == 0 ? 0.4 : 1)
+                                    .opacity(reveal == 0 ? 0 : 1)
+                                    .stagger(i, of: max(1, used), on: reveal > 0,
+                                             muted: reduceMotion)
+                            }
+                        }
                 }
                 Spacer(minLength: 0)
             }
@@ -219,8 +236,9 @@ struct AIQuotaCard: View {
                 Capsule().fill(Color.brand)
                     .frame(width: total > 0
                            ? max(used > 0 ? 3 : 0,
-                                 geo.size.width * min(1, Double(used) / Double(total)))
+                                 geo.size.width * min(1, Double(used) / Double(total)) * reveal)
                            : 0)
+                    .animation(Reveal.change, value: used)
             }
         }
         .frame(height: 6)
@@ -257,6 +275,8 @@ struct QuotaCard: View {
     /// 读得到是因为 QuotaCard 是装箱闭包**返回**的那个视图,环境值正好落在
     /// 它身上;写在 OverviewView 自己的 body 里读同一个键会永远拿到默认值。
     @Environment(\.cardWidth) private var cardWidth
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var reveal: Double = 0
 
     /// 一个页签背后的一组数。
     private struct Tab: Hashable, Identifiable {
@@ -319,6 +339,7 @@ struct QuotaCard: View {
                     cells(grid)
                     footer(t, grid)
                 }
+                .reveal($reveal)
             } else {
                 placeholder
             }
@@ -336,10 +357,24 @@ struct QuotaCard: View {
             ForEach(0..<g.rows, id: \.self) { r in
                 HStack(spacing: UsageGrid.gap) {
                     ForEach(0..<g.columns, id: \.self) { c in
+                        let i = r * g.columns + c
+                        let on = i < g.filled
+                        // 灰底始终在,只有颜色逐个浮上来。
+                        //
+                        // 直接给整个格子做透明度的话,还没轮到的那些格子是**空
+                        // 的**——行里会短暂缺一块,看着像没渲染完,而不是在铺开。
                         let cell = RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .fill(r * g.columns + c < g.filled
-                                  ? AnyShapeStyle(g.overflowed ? Color.orange : Color.brand)
-                                  : AnyShapeStyle(.quaternary))
+                            .fill(.quaternary)
+                            .overlay {
+                                if on {
+                                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                        .fill(g.overflowed ? Color.orange : Color.brand)
+                                        .scaleEffect(reveal == 0 ? 0.35 : 1)
+                                        .opacity(reveal == 0 ? 0 : 1)
+                                        .stagger(i, of: max(1, g.filled), on: reveal > 0,
+                                                 muted: reduceMotion)
+                                }
+                            }
                         if side > 0 {
                             cell.frame(width: side, height: side)
                         } else {

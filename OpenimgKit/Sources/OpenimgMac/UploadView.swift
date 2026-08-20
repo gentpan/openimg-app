@@ -281,16 +281,26 @@ private struct QueueRow: View {
 /// One progress bar shape, so the batch bar and the per-file bars match.
 struct ProgressBar: View {
     var tint: Color = .brand
+    /// 出现时是否从 0 长出来。上传进度条本来就从 0 开始,不需要;概览页那些
+    /// 一出现就该显示既有值的才需要。
+    var animatesIn = false
 
     let value: Double
+    @State private var reveal: Double = 0
+
+    private var shown: Double {
+        min(1, max(0, value)) * (animatesIn ? reveal : 1)
+    }
+
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(.white.opacity(0.10))
                 Capsule().fill(tint)
-                    .frame(width: max(2, geo.size.width * min(1, max(0, value))))
-                    .animation(.easeOut(duration: 0.2), value: value)
+                    .frame(width: max(shown > 0 ? 2 : 0, geo.size.width * shown))
+                    .animation(Reveal.change, value: value)
             }
         }
+        .reveal($reveal)
     }
 }
