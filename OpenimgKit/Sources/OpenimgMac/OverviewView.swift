@@ -21,7 +21,7 @@ struct OverviewView: View {
     /// 分组:先「我还剩多少」(空间、签到),再「东西长什么样」(构成、格式),
     /// 最后「最近发生了什么」(最近上传、趋势、流水)。
     private enum CardID: String, Hashable, Sendable {
-        case quota, ai, checkin, storage, composition, format, recent, activity
+        case quota, ai, checkin, storage, composition, format, activity
     }
 
     private var cards: [BoardCard<CardID>] {
@@ -33,8 +33,6 @@ struct OverviewView: View {
             BoardCard(.storage),
             BoardCard(.composition),
             BoardCard(.format),
-            // 唯一真吃宽度的卡:三列档跨两格,缩略图从 4 列变 6 列。
-            BoardCard(.recent, spans: [3: 2]),
             // 流水与趋势并排,占满整行,内部按 1:2 切。
             //
             // 合成一格而不是两张各自参与装箱:1:2 在整数格里排不出来
@@ -52,83 +50,62 @@ struct OverviewView: View {
             case .storage:     StorageCard(model: model)
             case .composition: compositionCard
             case .format:      formatCard
-            case .recent:      recentCard
             case .activity:    activityRow
             }
         }
         .task { await model.loadStats() }
     }
 
-    // MARK: - 最近上传
-
-    /// 最近上传的缩略图带。
-    ///
-    /// 概览原来全是数字和饼图,看不到一张自己的图。这条带子用图库已经加载
-    /// 的那一页数据,不多发一次请求;点一张直接跳到图库。
-    @ViewBuilder private var recentCard: some View {
-        if !model.images.isEmpty {
-            PanelCard(L.s.overview.recentTitle, "photo.stack") {
-                RecentStrip(model: model)
-            }
-        }
-    }
-
     /// 空间流水与上传趋势并排,宽度 1:2。
     ///
-    /// 流水是一列窄条目,宽了只是把「说明……数字」拉成横跨半屏的虚线;趋势是
+    /// 流水是一列窄条目,宽了只是把「说明………数字」拉成横跨半屏的虚线;趋势是
     /// 14 根柱子,窄了柱间距发虚。同一行里一个要窄一个要宽,正好互补。
     ///
-    /// 做成独立的 View 而不是 OverviewView 上的一个属性:环境值是 CardBoard
-    /// 加在「闭包返回的那个视图」上的,只有它的子视图读得到。写在 OverviewView
-    /// 自己身上会一直读到默认值 0。
+    /// 做成独立的 View(SplitRow)而不是这里直接算宽度:环境值是 CardBoard 加在
+    /// 「闭包返回的那个视图」上的,只有它的子视图读得到。
     private var activityRow: some View {
         SplitRow { ledgerCard } trailing: { trendCard }
     }
 
     // MARK: - 上传趋势
 
-    /// 最近 14 天的上传条形图。
+    /// 最近 30 天的上传折线。
     ///
-    /// 由已加载的图片按天聚合,而不是另加一个统计接口——用户端本来就没有
-    /// 按日序列的端点,而"最近这些图是什么时候传的"用现成数据就能答。
-    /// 只画有数据的那段:一整排零柱说明的是没数据,不是趋势。
+    /// 数据来自 `GET /api/stats/uploads`。原来是拿图库当前那一页按天聚合的——
+    /// 那份数据受排序与搜索影响,把排序切成「占用最大」再看趋势,画出来的图不是
+    /// 不全,是彻底错的;而 30 天的窗口一页几十张图根本覆盖不到。
+    ///
+    /// 折线而不是柱状:30 根柱子在一张卡的宽度里每根不到 10pt,细得看不出高低差;
+    /// 折线读的是走势,点密反而更顺。底下补一层填充,让"零"和"没有数据"在视觉上
+    /// 分得开。
     @ViewBuilder private var trendCard: some View {
-        let days = recentDays
-        if days.contains(where: { $0.count > 0 }) {
-            PanelCard(L.s.overview.trendTitle, "chart.bar", fills: true) {
-                Chart(days, id: \.day) { d in
-                    BarMark(
-                        x: .value(L.s.overview.trendDay, d.day, unit: .day),
-                        y: .value(L.s.overview.trendCount, d.count)
-                    )
-                    .foregroundStyle(Color.brand.gradient)
-                    .cornerRadius(2)
+        let points = model.uploadTrend?.points ?? []
+        if points.contains(where: { $0.count > 0 }) {
+            PanelCard(L.s.overview.trendTitle, "chart.xyaxis.line", fills: true) {
+                Chart(points) { p in
+                    if let day = p.day {
+                        AreaMark(
+                            x: .value(L.s.overview.trendDay, day, unit: .day),
+                            y: .value(L.s.overview.trendCount, p.count)
+                        )
+                        .foregroundStyle(
+                            .linearGradient(colors: [Color.brand.opacity(0.28), .clear],
+                                            startPoint: .top, endPoint: .bottom)
+                        )
+                        LineMark(
+                            x: .value(L.s.overview.trendDay, day, unit: .day),
+                            y: .value(L.s.overview.trendCount, p.count)
+                        )
+                        .foregroundStyle(Color.brand)
+                        .lineStyle(StrokeStyle(lineWidth: 1.8, lineJoin: .round))
+                        .interpolationMethod(.monotone)
+                    }
                 }
                 .chartYAxis { AxisMarks(position: .leading) }
-                // 吃掉这一行多出来的高度,而不是让图停在 110pt、下面吊一大片
-                // 空白。柱子跟着长高,基线也就贴到了卡片底部。
                 .frame(minHeight: 110, maxHeight: .infinity)
-                Text(L.s.overview.trendNote(days.reduce(0) { $0 + $1.count }))
+                Text(L.s.overview.trendNote(points.reduce(0) { $0 + $1.count }))
                     .font(.caption2).foregroundStyle(.tertiary)
             }
-        }
-    }
-
-    /// 把当前这页图片按自然日归并到最近 14 天。
-    private var recentDays: [(day: Date, count: Int)] {
-        var cal = Calendar.current
-        cal.locale = L.locale
-        let today = cal.startOfDay(for: Date())
-        guard let from = cal.date(byAdding: .day, value: -13, to: today) else { return [] }
-        var buckets: [Date: Int] = [:]
-        for img in model.images {
-            let d = cal.startOfDay(for: img.createdAt)
-            guard d >= from else { continue }
-            buckets[d, default: 0] += 1
-        }
-        return (0..<14).compactMap { i in
-            guard let d = cal.date(byAdding: .day, value: i, to: from) else { return nil }
-            return (d, buckets[d] ?? 0)
         }
     }
 
@@ -384,85 +361,6 @@ private struct SplitRow<Leading: View, Trailing: View>: View {
         HStack(alignment: .top, spacing: BoardFit.gap) {
             leading.frame(width: BoardFit.subWidth(of: cardWidth, span: span, columns: 1))
             trailing.frame(width: BoardFit.subWidth(of: cardWidth, span: span, columns: span - 1))
-        }
-    }
-}
-
-/// 最近上传的缩略图。
-///
-/// 原来是 4 列 × 54pt 定高,在 474pt 的列里算出来是 106×54 —— 2:1 的扁条,
-/// 一张竖构图的照片到这里只剩中间一道,认不出是哪张。改成按 4:3 定比例:
-/// 高度随列宽走,横竖构图都还看得出是什么。
-///
-/// 悬浮才浮出文件名。常驻的话八张图配八条字,这张卡就从"看一眼自己的图"
-/// 变成了一张文件列表 —— 那是图库该干的事。
-private struct RecentStrip: View {
-    @ObservedObject var model: AppModel
-    @Environment(\.cardSpan) private var cardSpan
-
-    /// 跨两格时列数从 4 变 6,行数不变。跨度变宽只加列不加高,卡片才不会
-    /// 在那一行里突然比邻居高出一截。
-    private var columns: Int { cardSpan >= 2 ? 6 : 4 }
-
-    var body: some View {
-        let shots = Array(model.images.prefix(columns * 2))
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: columns),
-                  spacing: 6) {
-            ForEach(shots) { img in
-                Tile(img: img, model: model)
-            }
-        }
-    }
-
-    private struct Tile: View {
-        let img: RemoteImage
-        @ObservedObject var model: AppModel
-        @State private var hovering = false
-
-        var body: some View {
-            Button {
-                model.section = .gallery
-                model.detail = img
-            } label: {
-                Thumbnail(url: img.thumbURL, client: try? model.client())
-                    // .fit 而不是 .fill:Thumbnail 是 Color.clear 打底的柔性
-                    // 视图,.fill 会让它在两个方向上都不小于父级的提议,而格子
-                    // 高度是无界的——那样会撑破。.fit 正好是"拿给定的宽,按比例
-                    // 推出高"。真正的填充裁切发生在 Thumbnail 内部。
-                    .aspectRatio(4.0 / 3.0, contentMode: .fit)
-                    .overlay(alignment: .bottom) { caption }
-                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(hovering ? Color.brand : .white.opacity(0.07),
-                                          lineWidth: hovering ? 1.5 : 1)
-                    }
-            }
-            .buttonStyle(.plain)
-            .onHover { hovering = $0 }
-            .animation(.easeOut(duration: 0.12), value: hovering)
-            .help(img.origName)
-        }
-
-        /// 名字压在一层从下往上收的黑罩里,不是压在图上。浅色的图上直接放白字
-        /// 会读不出来,而这张卡里什么颜色的图都可能出现。
-        @ViewBuilder private var caption: some View {
-            if hovering {
-                Text(img.origName)
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 5)
-                    .padding(.bottom, 4)
-                    .padding(.top, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        LinearGradient(colors: [.clear, .black.opacity(0.72)],
-                                       startPoint: .top, endPoint: .bottom)
-                    )
-                    .transition(.opacity)
-            }
         }
     }
 }

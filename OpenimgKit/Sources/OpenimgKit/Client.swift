@@ -436,6 +436,13 @@ public struct OpenimgClient: Sendable {
         return try decode(AIStatus.self, data, resp)
     }
 
+    /// 按天的上传趋势,默认 30 天(服务端夹在 7…90)。
+    public func uploadTrend(days: Int = 30) async throws -> UploadTrend {
+        let (data, resp) = try await session.data(
+            for: request("GET", "api/stats/uploads?days=\(days)"))
+        return try decode(UploadTrend.self, data, resp)
+    }
+
     /// 最近的生成记录,连带已完成那些对应的图片。轮询靠它。
     public func aiGenerations() async throws -> AIGenerationPage {
         let (data, resp) = try await session.data(for: request("GET", "api/ai/generations"))

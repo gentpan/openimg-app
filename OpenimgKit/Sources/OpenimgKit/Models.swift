@@ -393,3 +393,32 @@ public struct PasskeyCredential: Codable, Sendable, Identifiable {
         return f.date(from: raw)
     }
 }
+
+/// 按天的上传趋势。
+///
+/// 来自 `GET /api/stats/uploads`,而不是拿图库当前那一页聚合——那份数据受排序与
+/// 搜索影响,把排序切成「占用最大」再看趋势,画出来的图不是不全,是彻底错的;
+/// 而想画 30 天更不可能,一页只有几十张。
+public struct UploadTrend: Decodable, Sendable, Equatable {
+    public let days: Int
+    public let points: [Point]
+
+    public struct Point: Decodable, Sendable, Equatable, Identifiable {
+        /// YYYY-MM-DD,用户所在时区。
+        public let date: String
+        public let count: Int
+        public let bytes: Int64
+        public var id: String { date }
+
+        /// 解成 Date 供图表用。服务端补齐过缺口,所以这里不会有断点。
+        public var day: Date? {
+            let f = DateFormatter()
+            f.calendar = Calendar(identifier: .gregorian)
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.dateFormat = "yyyy-MM-dd"
+            // 服务端给的是用户所在时区的自然日,当地时区解回去才落在同一天。
+            f.timeZone = .current
+            return f.date(from: date)
+        }
+    }
+}
