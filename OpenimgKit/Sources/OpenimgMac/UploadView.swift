@@ -379,6 +379,8 @@ struct ProgressBar: View {
 
     let value: Double
     @State private var reveal: Double = 0
+    /// 所在卡片的入场延迟。上传进度条(animatesIn = false)用不上它。
+    @Environment(\.entranceDelay) private var entranceDelay
 
     private var shown: Double {
         min(1, max(0, value)) * (animatesIn ? reveal : 1)
@@ -393,6 +395,6 @@ struct ProgressBar: View {
                     .animation(Reveal.change, value: value)
             }
         }
-        .reveal($reveal)
+        .reveal($reveal, delay: animatesIn ? entranceDelay + Entrance.innerLead : 0)
     }
 }

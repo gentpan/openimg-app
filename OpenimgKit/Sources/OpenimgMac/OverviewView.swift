@@ -30,6 +30,17 @@ struct OverviewView: View {
         case quota, ai, checkin, storage, composition, format, activity
     }
 
+    /// 这张卡里的图表该等多久再开始画。
+    ///
+    /// 这三张(构成/格式/趋势)是在 OverviewView 自己的 body 里搭的,读不到
+    /// `@Environment(\.entranceDelay)`——环境值落在装箱闭包**返回**的那个视图
+    /// 上,只有它的子视图看得见。所以按声明顺序自己算一遍,结果与 CardBoard
+    /// 发下去的那份一致。
+    private func chartDelay(_ id: CardID) -> Double {
+        let i = cards.firstIndex { $0.id == id } ?? 0
+        return Entrance.delay(Entrance.cardBase) + Double(i) * Entrance.stagger + Entrance.innerLead
+    }
+
     private var cards: [BoardCard<CardID>] {
         [
             // 顺序按**高度**配对,不按语义分组。
@@ -139,7 +150,7 @@ struct OverviewView: View {
                         }
                     }
                 }
-                .reveal($revealTrend, duration: Reveal.draw)
+                .reveal($revealTrend, delay: chartDelay(.activity), duration: Reveal.draw)
                 .frame(minHeight: 110, maxHeight: .infinity)
                 Text(L.s.overview.trendNote(points.reduce(0) { $0 + $1.count }))
                     .font(.caption2).foregroundStyle(.tertiary)
@@ -180,7 +191,7 @@ struct OverviewView: View {
                     // 遮罩加在 overlay **之前**:加在后面的话中间那行字会跟着
                     // 被扇形切掉一半,扫到一半时看着像渲染坏了。
                     .mask { Wedge(end: revealDonut) }
-                    .reveal($revealDonut)
+                    .reveal($revealDonut, delay: chartDelay(.composition))
                     .overlay {
                         VStack(spacing: 0) {
                             Text(model.bytes(s.sizeStored))
@@ -253,7 +264,7 @@ struct OverviewView: View {
                 // Room on the right for the annotation, which would otherwise
                 // be clipped by the plot area on the widest bar.
                 .chartXScale(domain: 0...Double(widest), range: .plotDimension(endPadding: 66))
-                .reveal($revealFormats)
+                .reveal($revealFormats, delay: chartDelay(.format))
                 .frame(height: CGFloat(s.byFormat.count) * 30 + 12)
             } else {
                 placeholder

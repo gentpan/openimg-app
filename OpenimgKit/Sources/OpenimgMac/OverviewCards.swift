@@ -10,6 +10,7 @@ import OpenimgKit
 /// 图。合并规则里有三条写错了不会报错,所以那部分在 Kit 里、由自检钉住。
 struct StorageCard: View {
     @ObservedObject var model: AppModel
+    @Environment(\.entranceDelay) private var entranceDelay
     @State private var reveal: Double = 0
 
     private var slots: [StorageSlot] {
@@ -49,7 +50,7 @@ struct StorageCard: View {
                 }
             }
         }
-        .reveal($reveal)
+        .reveal($reveal, delay: entranceDelay + Entrance.innerLead)
     }
 
     private var bindPrompt: some View {
@@ -150,6 +151,7 @@ struct StorageCard: View {
 /// 让人以为总数是它们的和,所以主数字只有一个,另外两行是解释它从哪来。
 struct AIQuotaCard: View {
     @ObservedObject var model: AppModel
+    @Environment(\.entranceDelay) private var entranceDelay
     @State private var reveal: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -196,7 +198,7 @@ struct AIQuotaCard: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .reveal($reveal)
+                .reveal($reveal, delay: entranceDelay + Entrance.innerLead)
             }
         }
     }
@@ -275,6 +277,7 @@ struct QuotaCard: View {
     /// 读得到是因为 QuotaCard 是装箱闭包**返回**的那个视图,环境值正好落在
     /// 它身上;写在 OverviewView 自己的 body 里读同一个键会永远拿到默认值。
     @Environment(\.cardWidth) private var cardWidth
+    @Environment(\.entranceDelay) private var entranceDelay
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var reveal: Double = 0
 
@@ -339,7 +342,7 @@ struct QuotaCard: View {
                     cells(grid)
                     footer(t, grid)
                 }
-                .reveal($reveal)
+                .reveal($reveal, delay: entranceDelay + Entrance.innerLead)
             } else {
                 placeholder
             }

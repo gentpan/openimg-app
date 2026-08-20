@@ -24,7 +24,25 @@ extension EnvironmentValues {
 /// 把算出来的行画出来。
 struct CardBoard<ID: Hashable & Sendable, Content: View>: View {
     let cards: [BoardCard<ID>]
+    /// 卡片从第几号开始入场。默认 2——0 是侧栏,1 是顶栏。
+    var entranceBase = Entrance.cardBase
     @ViewBuilder let content: (ID) -> Content
+
+    private func flatIndex(of id: ID) -> Int {
+        cards.firstIndex { $0.id == id } ?? 0
+    }
+
+    /// 这张卡**里面**的内容该等多久开始。
+    ///
+    /// 卡片本身是整块一起到位的,一张一张弹出来太吵——七张卡各占一个节拍,光
+    /// 排完就要小半秒,而它们本来就是一屏里同一层的东西,没有先后之分。真正
+    /// 有层级的是"容器"和"内容":框先立住,数字和图表再填进去。
+    ///
+    /// 内容之间仍然按声明顺序错开一点,让填充有个方向;不按行列位置排,因为列
+    /// 数会随窗口宽度变,按位置排会让同一个页面在不同窗口下动得不一样。
+    private func innerDelay(of id: ID) -> Double {
+        Entrance.delay(entranceBase) + Double(flatIndex(of: id)) * Entrance.stagger
+    }
 
     /// 页面左右各 22。放在这里而不是外面:求解要拿去掉留白之后的净宽,
     /// 两处各写一遍迟早对不上。
@@ -46,6 +64,9 @@ struct CardBoard<ID: Hashable & Sendable, Content: View>: View {
                                     .environment(\.cardSpan, cell.span)
                                     .environment(\.cardWidth, w)
                                     .frame(width: w)
+                                    // 卡片自己不做入场,只把"你里面的内容该等
+                                    // 多久开始"发下去。
+                                    .environment(\.entranceDelay, innerDelay(of: cell.id))
                             }
                         }
                         // 行内靠左起排。行尾余量已经在装箱时并给最后一张卡了,
@@ -54,6 +75,8 @@ struct CardBoard<ID: Hashable & Sendable, Content: View>: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                // 整块卡片区作为**一个**模块入场,而不是每张卡各来一次。
+                .entrance(entranceBase)
                 .frame(width: fit.contentWidth)
                 // 列宽封顶之后剩下的宽度不拉伸卡片,而是让整块内容居中。
                 .frame(maxWidth: .infinity)

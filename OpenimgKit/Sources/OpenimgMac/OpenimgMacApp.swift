@@ -64,7 +64,9 @@ struct RootView: View {
         ZStack(alignment: .bottom) {
             if model.connected {
                 HStack(spacing: 0) {
-                    Sidebar(model: model).frame(width: 224)
+                    // 入场顺序 = 视觉层级:侧栏 → 顶栏 → 卡片(从上到下)。
+                    // 顺序本身就是在替眼睛排落点。
+                    Sidebar(model: model).frame(width: 224).entrance(0)
                     content
                 }
             } else {
@@ -89,7 +91,7 @@ struct RootView: View {
 
     private var content: some View {
         VStack(spacing: 0) {
-            TopBar(model: model)
+            TopBar(model: model).entrance(1)
             Group {
                 switch model.section {
                 case .overview: OverviewView(model: model)

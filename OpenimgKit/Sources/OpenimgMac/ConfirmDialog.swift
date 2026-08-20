@@ -15,10 +15,15 @@ struct ConfirmDialog: View {
     let onConfirm: () -> Void
     let onCancel: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 遮罩与内容共用一个进度:它们必须同时到位。分别各跑一段的话,会看到底
+    /// 色已经压暗、框还在半路——那一瞬间像是卡了一下。
+    @State private var shown = false
+
     var body: some View {
         ZStack {
             // 遮罩压暗背景,顺便吃掉穿透的点击。
-            Color.black.opacity(0.55)
+            Color.black.opacity(shown ? 0.55 : 0)
                 .ignoresSafeArea()
                 .onTapGesture { onCancel() }
 
@@ -58,9 +63,18 @@ struct ConfirmDialog: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(.white.opacity(0.10), lineWidth: 0.8)
             )
+            // 0.96 起,不是 0.9:后者看着像"弹出来",而这里要的是它本来就在那
+            // 儿、刚对上焦。250ms——弹窗是用户刚点出来的,他已经在等它了,慢一
+            // 点就是迟钝。
+            .scaleEffect(shown ? 1 : 0.96)
+            .opacity(shown ? 1 : 0)
             .shadow(color: .black.opacity(0.5), radius: 30, y: 14)
         }
-        .transition(.opacity)
+        .onAppear {
+            guard !shown else { return }
+            guard !reduceMotion else { shown = true; return }
+            withAnimation(ModalEntrance.curve) { shown = true }
+        }
     }
 }
 
