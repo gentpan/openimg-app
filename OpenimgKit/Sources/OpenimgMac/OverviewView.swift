@@ -26,13 +26,22 @@ struct OverviewView: View {
 
     private var cards: [BoardCard<CardID>] {
         [
+            // 顺序按**高度**配对,不按语义分组。
+            //
+            // 语义分组("我还剩多少"三张排一行)排出来的是:空间 230 / AI 140 /
+            // 签到 265 一行,存储位置 95 / 构成 355 / 格式 175 一行——同行卡片
+            // 会被拉到最高那张的高度,于是存储位置下面空出 260pt、AI 下面空出
+            // 125pt。分组是说给作者听的,空白是给用户看的。
+            //
+            // 现在把三张高的排一行、三张矮的排一行,行高从 277+359 降到
+            // 355+230,最大空隙从 260pt 降到 85pt。两列档下配对随之变化
+            // (空间+构成 / 签到+AI / 格式+位置),同样是高配高、矮配矮。
             BoardCard(.quota),
-            // AI 与空间对称:同为"我还剩多少"。
-            BoardCard(.ai),
-            BoardCard(.checkin),
-            BoardCard(.storage),
             BoardCard(.composition),
+            BoardCard(.checkin),
+            BoardCard(.ai),
             BoardCard(.format),
+            BoardCard(.storage),
             // 流水与趋势并排,占满整行,内部按 1:2 切。
             //
             // 合成一格而不是两张各自参与装箱:1:2 在整数格里排不出来
@@ -44,7 +53,7 @@ struct OverviewView: View {
     var body: some View {
         CardBoard(cards: cards) { id in
             switch id {
-            case .quota:       quotaCard
+            case .quota:       QuotaCard(model: model)
             case .ai:          AIQuotaCard(model: model)
             case .checkin:     checkinCard
             case .storage:     StorageCard(model: model)
@@ -124,48 +133,6 @@ struct OverviewView: View {
 
     // MARK: - Quota
 
-    private var quotaCard: some View {
-        PanelCard(L.s.overview.quotaTitle, "internaldrive") {
-            if let q = model.quota {
-                let used = q.quotaBytes > 0 ? Double(q.usedBytes) / Double(q.quotaBytes) : 0
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(model.bytes(q.availableBytes))
-                            .font(.system(size: 30, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Color.brand)
-                        Text(L.s.overview.quotaAvailable).foregroundStyle(.secondary)
-                        Spacer()
-                        // Moved here from the settings page, which carried a
-                        // second copy of this whole card. Settings is for
-                        // things you can change; nothing in it was.
-                        Text(L.s.common.imageCount(q.imageCount))
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
-                    // A plain bar, not a gauge: this is one number against one
-                    // ceiling, and a dial makes the reader do trigonometry to
-                    // learn what a rectangle says immediately.
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(.quaternary)
-                            Capsule()
-                                .fill(Color.brand)
-                                .frame(width: max(3, geo.size.width * min(1, used)))
-                        }
-                    }
-                    .frame(height: 8)
-                    HStack {
-                        Text(L.s.overview.quotaUsed(model.bytes(q.usedBytes)))
-                        Spacer()
-                        Text(L.s.overview.quotaTotal(model.bytes(q.quotaBytes)))
-                    }
-                    .font(.caption).foregroundStyle(.secondary)
-                }
-            } else {
-                placeholder
-            }
-        }
-    }
-
     // MARK: - Storage composition
 
     private var compositionCard: some View {
@@ -193,7 +160,7 @@ struct OverviewView: View {
                         .foregroundStyle(part.2)
                     }
                     .chartLegend(.hidden)
-                    .frame(height: 150)
+                    .frame(height: 124)
                     .overlay {
                         VStack(spacing: 0) {
                             Text(model.bytes(s.sizeStored))

@@ -17,6 +17,15 @@ struct OverviewStrings: Sendable {
     let quotaAvailable: String
     let quotaUsed: @Sendable (String) -> String
     let quotaTotal: @Sendable (String) -> String
+    let quotaTabPlatform: String
+    let quotaGridUnit: @Sendable (String) -> String
+    let quotaNoLimit: String
+    let quotaOverflow: String
+    let quotaStoredLabel: String
+    let storageBindTitle: String
+    let storageBindBody: String
+    let storageBindAction: String
+    let aiMonthlyUsed: String
 
     // 存储构成
     let compositionTitle: String
@@ -77,6 +86,15 @@ extension OverviewStrings {
         quotaAvailable: "可用",
         quotaUsed: { size in "已用 \(size)" },
         quotaTotal: { size in "总量 \(size)" },
+        quotaTabPlatform: "平台",
+        quotaGridUnit: { size in "每格 ≈ \(size)" },
+        quotaNoLimit: "不占平台配额",
+        quotaOverflow: "已超出",
+        quotaStoredLabel: "已存",
+        storageBindTitle: "还没绑定自己的存储",
+        storageBindBody: "绑定 R2 / S3 之后，新上传直接进你自己的桶，不再占平台配额。",
+        storageBindAction: "去绑定",
+        aiMonthlyUsed: "本月已用",
 
         compositionTitle: "存储构成",
         partPrimary: "主图",
@@ -139,6 +157,15 @@ extension OverviewStrings {
         quotaAvailable: "available",
         quotaUsed: { size in "\(size) used" },
         quotaTotal: { size in "\(size) total" },
+        quotaTabPlatform: "Platform",
+        quotaGridUnit: { size in "\(size) per cell" },
+        quotaNoLimit: "outside your plan quota",
+        quotaOverflow: "over quota",
+        quotaStoredLabel: "stored",
+        storageBindTitle: "No storage of your own yet",
+        storageBindBody: "Bind R2 or S3 and new uploads go straight to your own bucket, outside your plan quota.",
+        storageBindAction: "Bind one",
+        aiMonthlyUsed: "Used this month",
 
         compositionTitle: "Storage Breakdown",
         partPrimary: "Primary",

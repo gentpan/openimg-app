@@ -3305,6 +3305,76 @@ do {
 }
 
 
+section("用量方块图")
+
+do {
+    let GB: Int64 = 1_000_000_000, MB: Int64 = 1_000_000
+
+    // —— 有上限:格子读作比例 ——
+    let empty = UsageGrid.of(bytes: 0, capacity: 10 * GB)
+    check("空的不亮格", empty.filled == 0)
+    check("空的也算有分母", empty.hasCeiling)
+
+    let g = UsageGrid.of(bytes: 871 * MB, capacity: 10 * GB)
+    check("871MB/10GB 亮 9 格", g.filled == 9)           // 8.71% × 100
+    check("每格是总量的百分之一", g.unit == 100 * MB)
+    check("没超额", !g.overflowed)
+
+    // 这一条钉的是最会骗人的一处:量小到 round 完是 0,但它不是 0。
+    let tiny = UsageGrid.of(bytes: 3 * MB, capacity: 10 * GB)
+    check("3MB/10GB 也要亮一格", tiny.filled == 1)
+    check("非零绝不显示成空", UsageGrid.of(bytes: 1, capacity: 10 * GB).filled == 1)
+
+    let full = UsageGrid.of(bytes: 10 * GB, capacity: 10 * GB)
+    check("刚好用完是满的", full.filled == 100)
+    check("刚好用完不算超额", !full.overflowed)
+
+    let over = UsageGrid.of(bytes: 12 * GB, capacity: 10 * GB)
+    check("超额也是满的", over.filled == 100)
+    check("超额标得出来", over.overflowed)   // 满格和超额要分得开
+
+    // —— 没上限:格子读作量 ——
+    let n0 = UsageGrid.of(bytes: 0, capacity: nil)
+    check("没上限时空的不亮格", n0.filled == 0)
+    check("没上限标得出来", !n0.hasCeiling)
+
+    let n1 = UsageGrid.of(bytes: 871 * MB, capacity: nil)
+    // 单位取 1024 进制,与界面格式化字节的口径一致;否则"每格 ≈ 10 MB"会印成 9.5 MB。
+    check("871MB 用 10MiB 一格", n1.unit == 10 << 20)
+    check("871MB 亮 84 格", n1.filled == 84)
+    check("没上限时不会超额", !n1.overflowed)
+
+    // 单位要跟着量走,否则格子要么全满要么全空。
+    check("小量用小单位", UsageGrid.of(bytes: 3 * MB, capacity: nil).unit == 1 << 20)
+    check("大量用大单位", UsageGrid.of(bytes: 400 * GB, capacity: nil).unit == 5 << 30)
+    check("每格单位都是 2 的整数次幂",
+          UsageGrid.ladderIsBinary)
+    for b: Int64 in [1, MB, 100 * MB, 50 * GB, 900 * GB, 40_000 * GB] {
+        let x = UsageGrid.of(bytes: b, capacity: nil)
+        check("量 \(b) 装得进格子", x.filled <= x.cells && x.filled >= 1)
+    }
+
+    // —— 格子是方的 ——
+    do {
+        let g = UsageGrid.of(bytes: 0, capacity: 10 * GB)   // 20 × 5
+        // 卡片内容宽 = 列宽 − 卡片内边距×2。列宽上限 560,所以这是最宽的情况。
+        let side = UsageGrid.cellSide(contentWidth: 560 - 32, columns: g.columns)
+        check("最宽时一格约 23pt", abs(side - 23.55) < 0.1)
+        check("高度由边长算出", abs(g.height(contentWidth: 560 - 32) - (side * 5 + 3 * 4)) < 0.001)
+        // 窄卡片下也不能塌成零宽,否则整张图消失。
+        check("窄卡片仍有下限", UsageGrid.cellSide(contentWidth: 10, columns: 20) >= 2)
+        check("宽度越大格子越大",
+              UsageGrid.cellSide(contentWidth: 528, columns: 20)
+                > UsageGrid.cellSide(contentWidth: 368, columns: 20))
+    }
+
+    // —— 边界 ——
+    check("上限为 0 当没有上限", !UsageGrid.of(bytes: MB, capacity: 0).hasCeiling)
+    check("负数当零", UsageGrid.of(bytes: -5, capacity: 10 * GB).filled == 0)
+    check("格数 = 行×列", UsageGrid.of(bytes: 0, capacity: nil, columns: 20, rows: 5).cells == 100)
+}
+
+
 print("\n\(checks - failures)/\(checks) 通过")
 if failures > 0 {
     print("\(failures) 项失败")
