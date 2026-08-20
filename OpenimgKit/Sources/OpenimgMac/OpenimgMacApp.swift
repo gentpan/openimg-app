@@ -153,8 +153,21 @@ struct TopBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            // 标题带图标,和侧栏当前行呼应——顶栏与侧栏说的是同一个地方。
+            Image(systemName: model.section.iconFilled)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color.brand)
             Text(L.s.nav.section(model.section))
                 .font(.title3.weight(.semibold))
+
+            // 图库的排序 tabs 收进顶栏中段。原来它自己占一行,而顶栏中间本来
+            // 就空着——合上来整页省出一行高度。
+            if model.section == .gallery, !model.images.isEmpty {
+                Spacer(minLength: 12)
+                PillRow(items: SortKey.allCases,
+                        label: { L.s.gallery.sortLabel($0) },
+                        icon: { $0.icon }, selection: sortBinding)
+            }
 
             Spacer(minLength: 12)
 
@@ -177,6 +190,11 @@ struct TopBar: View {
         .padding(.horizontal, 18)
         .padding(.top, 14)
         .padding(.bottom, 12)
+    }
+
+    private var sortBinding: Binding<SortKey> {
+        Binding(get: { model.sort },
+                set: { model.sort = $0; Task { await model.load(resetPage: true) } })
     }
 }
 

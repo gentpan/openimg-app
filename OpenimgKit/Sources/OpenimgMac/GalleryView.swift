@@ -8,8 +8,6 @@ struct GalleryView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !model.images.isEmpty { filters }
-
             if model.images.isEmpty {
                 EmptyState(model: model)
             } else {
@@ -60,19 +58,6 @@ struct GalleryView: View {
         .padding(.bottom, 14)
     }
 
-    /// 排序 tabs。选中操作不在这儿——它挪到了底栏「全选本页」左边:全选是在
-    /// 底栏点的,结果却跳到页面顶上,视线要横跨整屏去找删除按钮。挪走之后这
-    /// 一行不再有分支,排序也不会在勾选时凭空消失。
-    private var filters: some View {
-        HStack(spacing: 10) {
-            PillRow(items: SortKey.allCases, label: { L.s.gallery.sortLabel($0) },
-                    icon: { $0.icon }, selection: sortBinding)
-            Spacer()
-        }
-        .padding(.horizontal, 18)
-        .padding(.bottom, 12)
-    }
-
     /// 整库导出到本地目录。放在常驻的状态栏而不是 filters 行——搜索无结果
     /// 时 filters 整行消失,进行中的进度和「取消」不能跟着蒸发。
     @ViewBuilder private var exportControl: some View {
@@ -104,11 +89,6 @@ struct GalleryView: View {
             .buttonStyle(QuietButton())
             .help(L.s.gallery.exportHelp)
         }
-    }
-
-    private var sortBinding: Binding<SortKey> {
-        Binding(get: { model.sort },
-                set: { model.sort = $0; Task { await model.load(resetPage: true) } })
     }
 
     private var statusBar: some View {
