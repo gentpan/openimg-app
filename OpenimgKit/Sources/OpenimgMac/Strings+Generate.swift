@@ -63,8 +63,8 @@ struct GenerateStrings: Sendable {
     let viewInGallery: String
     let usePrompt: String
     let removeTitle: String
-    let removeMessage: String
-    let removeAlsoImage: String
+    let removeKeepImage: String
+    let removeWithImage: String
     let removeConfirm: String
     let removed: String
     let doneToast: String
@@ -125,8 +125,8 @@ extension GenerateStrings {
         viewInGallery: "在图库里查看",
         usePrompt: "用这句再生成",
         removeTitle: "删除这条记录？",
-        removeMessage: "记录会从列表里消失。已经用掉的次数不会退回来。",
-        removeAlsoImage: "同时删除生成的图片",
+        removeKeepImage: "只删记录",
+        removeWithImage: "连图一起删",
         removeConfirm: "删除",
         removed: "已删除",
         doneToast: "生成完成，已存入图库",
@@ -185,8 +185,8 @@ extension GenerateStrings {
         viewInGallery: "View in Gallery",
         usePrompt: "Reuse This Prompt",
         removeTitle: "Delete this record?",
-        removeMessage: "It disappears from the list. The generations you have already used are not returned.",
-        removeAlsoImage: "Also delete the generated image",
+        removeKeepImage: "Record only",
+        removeWithImage: "Record and image",
         removeConfirm: "Delete",
         removed: "Deleted",
         doneToast: "Generated — saved to your gallery",

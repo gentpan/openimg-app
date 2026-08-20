@@ -206,31 +206,18 @@ private struct GenerationRow: View {
     @ObservedObject var model: AppModel
     let gen: AIGeneration
 
-    @State private var confirmingDelete = false
+    /// 点了删除、等着确认。就地展开,不弹模态框。
+    ///
+    /// 模态框为了问一句"删不删"把整个窗口压暗、把注意力从这一行拽走,而答案
+    /// 就在这一行里;而且那个勾选框要用户先读一句话、再去理解勾与不勾的差别。
+    /// 换成原地展开的一条确认条:每颗按钮直接说清按下去会发生什么,不用先读
+    /// 说明,也不用离开上下文。
+    @State private var arming = false
 
     private var image: RemoteImage? { gen.imageID.flatMap { model.aiImages[$0] } }
 
     var body: some View {
-        row
-            // 弹在整个窗口上而不是这一行里:行只有 70pt 高,对话框放进去会被
-            // 裁掉。overlay 挂在最外层由 GenerateView 那边的 ZStack 承载。
-            .overlay {
-                if confirmingDelete {
-                    ConfirmDialog(
-                        title: L.s.generate.removeTitle,
-                        message: L.s.generate.removeMessage,
-                        confirmTitle: L.s.generate.removeConfirm,
-                        cancelTitle: L.s.common.cancel,
-                        // 没有产出图就不给这个勾选项——勾了也没有东西可删。
-                        toggleTitle: image != nil ? L.s.generate.removeAlsoImage : nil,
-                        onConfirm: { alsoImage in
-                            confirmingDelete = false
-                            Task { await model.aiDelete(gen, alsoImage: alsoImage) }
-                        },
-                        onCancel: { confirmingDelete = false })
-                }
-            }
-            .animation(.easeOut(duration: 0.15), value: confirmingDelete)
+        row.animation(.easeOut(duration: 0.15), value: arming)
     }
 
     private var row: some View {
@@ -243,6 +230,11 @@ private struct GenerationRow: View {
                 Text(gen.prompt)
                     .font(.callout)
                     .lineLimit(2)
+                    // 提示挂在描述本身上,不挂在整行上。
+                    //
+                    // 挂整行的话它会盖住右边每颗工具按钮自己的提示——鼠标停在
+                    // 「复制链接」上,浮出来的却是这条记录的提示词和模型名。
+                    .help("\(gen.prompt)\n\(L.s.generate.modelLabel(gen.model))")
                     .frame(maxWidth: .infinity, alignment: .leading)
                 meta
                 if let e = gen.error, !e.isEmpty {
@@ -257,9 +249,6 @@ private struct GenerationRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .panelSurface(10)
-        // 描述在行里只显示两行,悬浮给全文;模型名跟在后面——它是「这张图
-        // 怎么来的」的一部分,但不值得占据本就拥挤的那行元信息。
-        .help("\(gen.prompt)\n\(L.s.generate.modelLabel(gen.model))")
     }
 
     @ViewBuilder
@@ -301,7 +290,15 @@ private struct GenerationRow: View {
         .foregroundStyle(.tertiary)
     }
 
-    private var actions: some View {
+    @ViewBuilder private var actions: some View {
+        if arming {
+            confirmBar
+        } else {
+            toolCluster
+        }
+    }
+
+    private var toolCluster: some View {
         ToolCluster {
             ToolTile(icon: "arrow.uturn.backward", help: L.s.generate.usePrompt) {
                 model.aiReuse(gen)
@@ -319,10 +316,37 @@ private struct GenerationRow: View {
             // 还在跑的不给删:额度已经扣了、上游可能还在出图,让它从界面上消
             // 失就等于让一笔未结的账消失,用户既看不到进度也看不到退款。
             if gen.status.isTerminal {
-                ToolTile(icon: "trash", help: L.s.generate.removeTitle) {
-                    confirmingDelete = true
-                }
+                ToolTile(icon: "trash", help: L.s.generate.removeTitle) { arming = true }
             }
         }
+    }
+
+    /// 确认条。占的是工具簇原来的位置,所以行不会因为展开而变形。
+    ///
+    /// 两个去处各给一颗按钮,而不是一颗按钮加一个勾选框:「连图一起删」和
+    /// 「只删记录」是两件不同的事,让按钮把它说出来,比让用户先读一句话再去
+    /// 推断勾与不勾的差别要短一步。没有产出图时只剩一颗——那时没有第二个去处。
+    private var confirmBar: some View {
+        HStack(spacing: 6) {
+            Button(L.s.common.cancel) { arming = false }
+                .buttonStyle(QuietButton())
+
+            if image != nil {
+                Button(L.s.generate.removeKeepImage) { remove(alsoImage: false) }
+                    .buttonStyle(QuietButton())
+                Button(L.s.generate.removeWithImage) { remove(alsoImage: true) }
+                    .buttonStyle(SolidDangerButton())
+            } else {
+                Button(L.s.generate.removeConfirm) { remove(alsoImage: false) }
+                    .buttonStyle(SolidDangerButton())
+            }
+        }
+        .controlSize(.small)
+        .transition(.opacity)
+    }
+
+    private func remove(alsoImage: Bool) {
+        arming = false
+        Task { await model.aiDelete(gen, alsoImage: alsoImage) }
     }
 }

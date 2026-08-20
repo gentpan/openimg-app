@@ -523,10 +523,16 @@ private struct LedgerCard: View {
     /// 而隔了天的条目,知道是哪天比知道几点重要。
     private func stamp(_ d: Date) -> String {
         let cal = Calendar.current
-        let style: Date.FormatStyle = cal.isDateInToday(d)
-            ? Date.FormatStyle(date: .omitted, time: .shortened)
-            : Date.FormatStyle(date: .abbreviated, time: .omitted)
-        return d.formatted(style.locale(L.locale))
+        if cal.isDateInToday(d) {
+            return d.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(L.locale))
+        }
+        // 同年不印年份。「2026年8月19日」里那四位对辨认哪一天毫无帮助,却占掉
+        // 半个标题的宽度,而流水几乎都是今年的。
+        let sameYear = cal.component(.year, from: d) == cal.component(.year, from: Date())
+        let style = Date.FormatStyle(date: sameYear ? .omitted : .abbreviated, time: .omitted)
+            .locale(L.locale)
+        guard sameYear else { return d.formatted(style) }
+        return d.formatted(style.month(.abbreviated).day())
     }
 
     private func pager(_ icon: String, enabled: Bool, _ act: @escaping () -> Void) -> some View {
@@ -557,7 +563,10 @@ private struct LedgerCard: View {
                     .lineLimit(1).truncationMode(.middle)
             }
             Spacer()
-            Text("\(t.isGrant ? "+" : "−")\(model.bytes(t.bytes))")
+            // 取绝对值再自己加符号。ByteCountFormatter 对负数会自带一个连字
+            // 符,前面再拼一个减号就是「−-104 KB」——两个不同的字符撞在一起,
+            // 看着像排版坏了。
+            Text("\(t.isGrant ? "+" : "−")\(model.bytes(abs(t.bytes)))")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(t.isGrant ? Color.brand : .secondary)
         }

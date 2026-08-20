@@ -209,7 +209,7 @@ struct EditorCanvas: View {
                     message: L.s.editor.discardMessage,
                     confirmTitle: L.s.editor.discardConfirm,
                     cancelTitle: L.s.editor.keepEditing,
-                    onConfirm: { _ in showCancelConfirm = false; model.editTarget = nil },
+                    onConfirm: { showCancelConfirm = false; model.editTarget = nil },
                     onCancel: { showCancelConfirm = false })
             }
         }
