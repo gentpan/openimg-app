@@ -18,6 +18,17 @@ struct SettingsStrings: Sendable {
     let appearance: String
     let appAndDevice: String
     let appVersion: String
+    let updateCheck: String
+    let updateChecking: String
+    let updateUpToDate: String
+    let updateAvailable: @Sendable (String) -> String
+    let updateNotes: String
+    let updateStale: @Sendable (Int) -> String
+    let updateUrgent: String
+    let updateTooOld: @Sendable (String) -> String
+    let updateWrongArch: String
+    let updateFailed: String
+    let updateHowTo: String
     let language: String
     let languageHint: String
     let brandColor: String
@@ -206,6 +217,17 @@ extension SettingsStrings {
         appearance: "外观",
         appAndDevice: "应用与设备",
         appVersion: "版本",
+        updateCheck: "检查更新",
+        updateChecking: "正在检查…",
+        updateUpToDate: "已是最新版本",
+        updateAvailable: { v in "有新版本 \(v)" },
+        updateNotes: "查看发布说明",
+        updateStale: { d in "更新信息已过期 \(d) 天，建议去发布页确认一下" },
+        updateUrgent: "这一版建议尽快升级",
+        updateTooOld: { v in "新版需要 macOS \(v) 或更新版本" },
+        updateWrongArch: "新版不适用于这台 Mac 的处理器",
+        updateFailed: "检查更新没成功",
+        updateHowTo: "下载后拖进「应用程序」覆盖即可，图库和登录状态都不受影响。",
         language: "界面语言",
         languageHint: "切换后立即生效",
         brandColor: "品牌色",
@@ -393,6 +415,17 @@ extension SettingsStrings {
         appearance: "Appearance",
         appAndDevice: "App & Device",
         appVersion: "Version",
+        updateCheck: "Check for Updates",
+        updateChecking: "Checking…",
+        updateUpToDate: "You are on the latest version",
+        updateAvailable: { v in "Version \(v) is available" },
+        updateNotes: "Release notes",
+        updateStale: { d in "This update info is \(d) days stale — worth checking the releases page" },
+        updateUrgent: "Updating soon is recommended",
+        updateTooOld: { v in "The new version needs macOS \(v) or later" },
+        updateWrongArch: "The new version does not run on this Mac's processor",
+        updateFailed: "Could not check for updates",
+        updateHowTo: "Download it and drag it into Applications, replacing the old one. Your library and sign-in are unaffected.",
         language: "Language",
         languageHint: "Applies immediately",
         brandColor: "Brand color",

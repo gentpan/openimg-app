@@ -77,6 +77,10 @@ final class AppModel: ObservableObject {
     @Published var account: Account?
     @Published var quota: Quota?
 
+    /// 更新检查。独立的对象而不是一堆 @Published 散在这里:它有自己的状态机,
+    /// 而且和账号、图库完全无关——没登录也该能查更新。
+    let updates = UpdateChecker()
+
     // 外观:界面语言。改它要重建整个视图树——文案取自 L.s 这个静态量,
     // 而非每个视图观察的属性,单靠 objectWillChange 只会刷新恰好在读
     // model 的那些视图。langEpoch 挂在根视图的 .id 上,变一次整树重建。

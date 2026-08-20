@@ -475,6 +475,8 @@ struct SettingsView: View {
     /// ——这是自动上传,不是同步,卡片文案也照这个口径写。
     private var watchCard: some View {
         PanelCard(L.s.settings.watchFolders, "folder.badge.plus") {
+            InfoTip(text: L.s.settings.watchNote, title: L.s.settings.watchFolders)
+        } content: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Toggle(isOn: Binding(
@@ -546,9 +548,6 @@ struct SettingsView: View {
                     Spacer()
                 }
 
-                Text(L.s.settings.watchNote)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
             }
         }
     }
@@ -591,13 +590,16 @@ struct SettingsView: View {
                 //
                 // 在这之前 app 里没有任何地方显示自己的版本——用户想说"我这版
                 // 有个问题"的时候只能去看文件信息,而那还得先找到 .app 在哪。
-                HStack(alignment: .firstTextBaseline) {
-                    Text(L.s.settings.appVersion).font(.callout)
-                    Spacer()
-                    Text(AppVersion.display)
-                        .font(.callout.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(L.s.settings.appVersion).font(.callout)
+                        Spacer()
+                        Text(AppVersion.display)
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    UpdateRow(checker: model.updates)
                 }
 
                 Divider().overlay(Color.white.opacity(0.06))
@@ -664,6 +666,13 @@ struct SettingsView: View {
     /// 编辑器里按需开关;对监控目录可选自动应用。
     private var watermarkCard: some View {
         PanelCard(L.s.settings.watermark, "signature") {
+            // 三段说明合成一处。它们都是"知道了有用、但不影响当下操作"的背景
+            // 知识,常驻在卡里会占掉整张卡近一半高度。
+            InfoTip(text: [L.s.settings.wmGenNote,
+                           L.s.settings.wmImageNote,
+                           L.s.settings.watermarkNote].joined(separator: "\n\n"),
+                    title: L.s.settings.watermark)
+        } content: {
             VStack(alignment: .leading, spacing: 12) {
                 // 模式在最前面:后面每一栏的含义都随它变(输入框还是图片、
                 // 字号还是 logo 宽度),放在下面会让人先填完再发现填错了地方。
@@ -773,10 +782,6 @@ struct SettingsView: View {
                 .toggleStyle(.checkbox)
                 .font(.caption)
                 .disabled(model.watermarkSpec() == nil)
-
-                Text(L.s.settings.watermarkNote)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
             }
         }
     }
@@ -858,14 +863,8 @@ struct SettingsView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Text(L.s.settings.wmGenNote)
-                    .font(.caption2).foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            Text(L.s.settings.wmImageNote)
-                .font(.caption2).foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

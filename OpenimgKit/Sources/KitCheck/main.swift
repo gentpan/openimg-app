@@ -2899,6 +2899,100 @@ do {
 }
 
 
+section("更新 · 策略闸门")
+
+do {
+    func v(_ s: String) -> SemanticVersion { SemanticVersion(s)! }
+    let now = Date(timeIntervalSince1970: 1_787_000_000)
+
+    func manifest(version: String = "0.4.0", build: Int = 4000,
+                  minSystem: String = "14.0.0", arch: String = "arm64",
+                  seq: Int = 1_000, expiresIn days: Double = 90,
+                  revokedBelow: String? = nil) -> UpdateManifest {
+        UpdateManifest(
+            schema: 1, seq: seq, issuedAt: now,
+            expiresAt: now.addingTimeInterval(days * 86400),
+            channel: "stable",
+            latest: .init(version: v(version), build: build,
+                          minimumSystemVersion: v(minSystem), arch: arch,
+                          url: URL(string: "https://github.com/gentpan/openimg-app/releases/download/v1/a.zip")!,
+                          size: 1, sha256: String(repeating: "a", count: 64), notesURL: nil),
+            revokedBelow: revokedBelow.map(v), revokeKeys: [], signedByKeyID: "k1")
+    }
+
+    func check1(_ m: UpdateManifest, local: String = "0.3.0", build: Int = 3000,
+                system: String = "15.0.0", arch: String = "arm64",
+                at: Date = now, seen: Int = 0) -> UpdateOutcome? {
+        UpdatePolicy.evaluate(manifest: m, local: v(local), localBuild: build,
+                              system: v(system), arch: arch, now: at, highestSeenSeq: seen)
+    }
+
+    check("有新版时给 available",
+          check1(manifest())?.verdict == .available(manifest().latest))
+    check("版本相同不算更新",
+          check1(manifest(version: "0.3.0", build: 3000))?.verdict == .upToDate)
+    // 少了"严格大于"这一条,一份声称 0.3.0 的清单会让 0.3.0 的用户反复更新到自己。
+    check("清单版本更旧不算更新",
+          check1(manifest(version: "0.2.0", build: 2000))?.verdict == .upToDate)
+    // 版本号是人写的、build 号是算出来的,不一致说明发版流程出过岔子。
+    check("版本更新但 build 没涨,不算更新",
+          check1(manifest(version: "0.4.0", build: 3000))?.verdict == .upToDate)
+
+    // 重放:见过更新的清单之后,旧的一律不采信。nil 与"没有更新"是两回事。
+    check("seq 不大于见过的最大值 → 不采信",
+          check1(manifest(seq: 100), seen: 100) == nil)
+    check("seq 更大 → 采信", check1(manifest(seq: 101), seen: 100) != nil)
+
+    // 装不了要说清楚。并进 upToDate 的话,用户在别处看到有新版而 app 说"已是
+    // 最新",会以为检查坏了。
+    check("系统太旧 → blocked 而不是 upToDate",
+          check1(manifest(minSystem: "26.0.0"), system: "15.0.0")?.verdict
+              == .blocked(reason: .systemTooOld(needs: v("26.0.0")), latest: v("0.4.0")))
+    check("架构不符 → blocked",
+          check1(manifest(arch: "x86_64"))?.verdict
+              == .blocked(reason: .wrongArch(needs: "x86_64"), latest: v("0.4.0")))
+    check("架构判定在系统判定之前(先说更根本的那条)",
+          check1(manifest(minSystem: "26.0.0", arch: "x86_64"))?.verdict
+              == .blocked(reason: .wrongArch(needs: "x86_64"), latest: v("0.4.0")))
+    // 边界:>= 而不是 >。写成 > 的话,系统版本恰好等于下限的人永远收不到更新,
+    // 而那恰恰是最常见的一档(大多数人就停在最低支持版本上)。
+    do {
+        let m = manifest(minSystem: "15.0.0")
+        check("系统恰好等于下限 → 可以装",
+              check1(m, system: "15.0.0")?.verdict == .available(m.latest))
+        check("系统低于下限一个修订号 → blocked",
+              check1(m, system: "14.9.9")?.verdict
+                  == .blocked(reason: .systemTooOld(needs: v("15.0.0")), latest: v("0.4.0")))
+    }
+
+    // 过期是警告不是闸门:做成闸门的话"不发版就无法续期",而三个月不发版正是
+    // 最可能发生的情况。
+    let old = manifest(expiresIn: -10)
+    check("清单过期后仍给结论", check1(old)?.verdict == .available(manifest().latest))
+    check("过期天数算得出", check1(old)?.staleDays == 10)
+    check("没过期时 staleDays 为 nil", check1(manifest())?.staleDays == nil)
+
+    check("低于 revokedBelow 时标出来",
+          check1(manifest(revokedBelow: "0.3.5"), local: "0.3.0")?.belowRevoked == true)
+    check("不低于 revokedBelow 时不标",
+          check1(manifest(revokedBelow: "0.2.0"), local: "0.3.0")?.belowRevoked == false)
+    check("没有 revokedBelow 时不标", check1(manifest())?.belowRevoked == false)
+}
+
+section("更新 · 编进 app 的公钥")
+
+do {
+    // 公钥表是信任根。空表意味着任何清单都验不过——那是个静默的"永远没有更新"。
+    check("公钥表不为空", !UpdateKeys.publicKeys.isEmpty)
+    check("k1 在表里", UpdateKeys.publicKeys["k1"] != nil)
+    check("每把公钥都是 32 字节", UpdateKeys.publicKeys.values.allSatisfy { $0.count == 32 })
+    // 清单地址是编进二进制的常量,但常量会被改,而改成 http 的表现是一条可被
+    // 中间人替换的更新通道。
+    check("清单地址是 https", UpdateKeys.feedURL.scheme == "https")
+    check("清单地址指向自己的服务器", UpdateKeys.feedURL.host == "openimg.io")
+}
+
+
 print("\n\(checks - failures)/\(checks) 通过")
 if failures > 0 {
     print("\(failures) 项失败")

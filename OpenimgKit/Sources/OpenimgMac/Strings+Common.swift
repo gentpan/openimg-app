@@ -9,6 +9,7 @@ struct CommonStrings: Sendable {
     let ok: String
     let cancel: String
     let save: String
+    let details: String
     let delete: String
     let remove: String
     let close: String
@@ -45,6 +46,7 @@ extension CommonStrings {
         ok: "确定",
         cancel: "取消",
         save: "保存",
+        details: "说明",
         delete: "删除",
         remove: "移除",
         close: "关闭",
@@ -74,6 +76,7 @@ extension CommonStrings {
         ok: "OK",
         cancel: "Cancel",
         save: "Save",
+        details: "Details",
         delete: "Delete",
         remove: "Remove",
         close: "Close",

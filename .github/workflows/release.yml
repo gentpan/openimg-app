@@ -1,37 +1,31 @@
-# 推 v* 标签即构建并发布。产物是 ad-hoc 签名的 .app(zip):
-# 配好 Developer ID 证书的 secrets 之前,用户侧需要右键打开一次。
-name: release
+# 推 v* 标签时只跑自检,不发布任何产物。
+#
+# 这里原来会用 ad-hoc 签名打一个包并建 GitHub Release,作为"本地没发就有个兜
+# 底"的安排。那个安排现在必须去掉,原因有两条,第二条是硬的:
+#
+#   1. ad-hoc 包没有团队 ID,Gatekeeper 直接拒。用户下到它只会得到一句「无法
+#      验证开发者」,而 README 上写着"经过公证、双击即可打开"。
+#   2. **它会污染更新通道。** 更新清单里的下载地址指向 latest release,而客户端
+#      在装之前会校验团队 ID —— ad-hoc 包过不了。真正的问题是它抢跑:CI 比人快,
+#      标签一推它就先建好 release,于是本地 release.sh 的 `gh release create`
+#      失败,而 latest 停在一个所有人都装不上的包上。
+#
+# 兜底的价值本来就不高:发布必须在本机做(证书与公证凭据在钥匙串里),CI 打的包
+# 谁也用不了。所以只留自检——那才是 CI 在这个项目里真正能做的事。
+name: checks
+
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch: {}
-permissions:
-  contents: write
+  pull_request:
+  workflow_dispatch:
+
 jobs:
-  build:
+  kitcheck:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: 自检
         run: cd OpenimgKit && swift run KitCheck
-      # 单独一步可见输出的构建:package-mac.sh 为了本地清爽把编译日志吞进
-      # /dev/null,CI 里失败会变成无声的 exit 1
-      - name: 构建
+      - name: 编译 app
         run: cd OpenimgKit && swift build -c release --product OpenimgMac
-      - name: 打包
-        run: ./package-mac.sh release
-      - name: 压缩
-        run: ditto -c -k --keepParent build/Openimg.app Openimg.zip
-      - name: 发布
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # 本地 release.sh(签名+公证)先发过的话这里让位——签名产物优于 ad-hoc
-          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
-            echo "release 已存在(签名发布),跳过 ad-hoc 产物"
-            exit 0
-          fi
-          gh release create "${GITHUB_REF_NAME}" Openimg.zip \
-            --title "${GITHUB_REF_NAME}" \
-            --notes "ad-hoc 签名构建。首次打开:右键 App → 打开 → 再点「打开」;或 \`xattr -d com.apple.quarantine\` 解除隔离。"

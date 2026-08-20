@@ -78,7 +78,13 @@ struct RootView: View {
         // 只会刷新恰好在读 model 的视图。换语言时把 epoch 挂上 .id 让整树
         // 重建——代价是回到默认页,但换语言本就是一次性动作。
         .id(model.langEpoch)
-        .task { await model.restore() }
+        .task {
+            await model.restore()
+            // 查更新与登录无关:没登录的人也该知道有新版。放在 restore 之后而
+            // 不是并行,是因为它完全不急——一天一次的东西,晚几百毫秒无所谓,
+            // 而并行会和首屏的几个请求抢带宽。
+            await model.updates.checkIfDue()
+        }
     }
 
     private var content: some View {
@@ -252,7 +258,13 @@ struct Sidebar: View {
                             // 时「生成」那行也会跟着转,像是自己动了起来。
                             busy: (s == .upload && model.uploading)
                                 || (s == .generate && model.aiPendingText)
-                                || (s == .retouch && model.aiPendingEdit)
+                                || (s == .retouch && model.aiPendingEdit),
+                            // 有新版时在「设置」那行点一个小圆点。
+                            //
+                            // 不弹窗、不横幅:更新是件不急的事,而打断正在做的事
+                            // 去说一件不急的事,换来的是用户学会无视这类提示。
+                            // 一个圆点足够被看见,又不要求当场处理。
+                            dot: s == .settings && model.updates.hasUpdate
                         ) { model.section = s }
                     }
                 }
@@ -362,6 +374,8 @@ private struct SidebarRow: View {
     /// where that shows — a spinner buried on the upload page tells nobody
     /// anything once they have navigated away.
     var busy = false
+    /// 右端的小圆点。有事发生但不急时点亮。
+    var dot = false
     let action: () -> Void
     @State private var hovering = false
 
@@ -381,6 +395,12 @@ private struct SidebarRow: View {
                     .symbolEffect(.pulse, isActive: busy)
                 Text(L.s.nav.section(section)).font(.system(size: 15))
                 Spacer(minLength: 0)
+                if dot {
+                    Circle()
+                        .fill(Color.brand)
+                        .frame(width: 6, height: 6)
+                        .transition(.scale.combined(with: .opacity))
+                }
             }
             // 选中不再是一块实心圆角底,而是文字本身变成品牌色——发光条已经
             // 在左边指明了是哪一行,再压一块实底就是同一件事说两遍,而且那块

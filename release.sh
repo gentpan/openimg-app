@@ -108,3 +108,67 @@ else
     --latest
 fi
 echo "完成:https://github.com/gentpan/openimg-app/releases/tag/$VERSION"
+
+# ---------------------------------------------------------------------------
+# 6/6 更新清单
+#
+# 装了老版本的人靠这份清单才知道有新版。它必须在 GitHub Release 建好之后才生成
+# ——清单里写着下载地址和 sha256,而那个地址要等 release 存在才有效。
+#
+# 私钥不在版本库里,在 ~/.openimg/。没有它就跳过这一步并明说:清单可以事后补签,
+# 而一次发不出清单只是"老用户晚几天知道",不值得让整个发布失败。
+# ---------------------------------------------------------------------------
+KEY="${OPENIMG_UPDATE_KEY:-$HOME/.openimg/update-signing-k1.key}"
+PUB="${OPENIMG_UPDATE_PUB:-$HOME/.openimg/update-signing-k1.pub}"
+if [[ ! -f "$KEY" ]]; then
+  echo
+  echo "  ⚠️  没找到签名私钥($KEY),跳过更新清单。"
+  echo "     老版本的用户不会收到这次更新的提示。补签:"
+  echo "     ./release.sh --manifest-only $VERSION"
+  exit 0
+fi
+
+echo
+echo "6/6 生成更新清单…"
+TOOL="$(xcrun swift build --package-path "$PKG" -c release --show-bin-path)/UpdateTool"
+xcrun swift build --package-path "$PKG" -c release --product UpdateTool >/dev/null
+
+MANIFEST="$ROOT/build/update.json"
+"$TOOL" sign \
+  --key "$KEY" --key-id k1 \
+  --version "${VERSION#v}" \
+  --zip "$ZIP" \
+  --url "https://github.com/gentpan/openimg-app/releases/download/$VERSION/$(basename "$ZIP")" \
+  --notes-url "https://github.com/gentpan/openimg-app/releases/tag/$VERSION" \
+  --out "$MANIFEST"
+
+# 用编进 app 的那把公钥回验一遍。签名工具自己已经验过一次,这里是拿**另一个
+# 来源**的公钥再验——如果哪天公钥表和私钥对不上了,只有这一步能发现。
+if [[ -f "$PUB" ]]; then
+  "$TOOL" verify --pubkey "$(cat "$PUB")" --key-id k1 "$MANIFEST" \
+    || { echo "清单验签失败,不上传" >&2; exit 1; }
+fi
+
+# 传到服务器。清单放自己的域名、包放 GitHub:单独拿下任何一边都拿不到代码执行。
+UPLOAD_HOST="${OPENIMG_HOST:-root@88.198.27.78}"
+UPLOAD_KEY="${OPENIMG_KEY:-$HOME/Desktop/gentpan.pem}"
+UPLOAD_PATH="${OPENIMG_UPDATE_PATH:-/opt/openimg/config/update.json}"
+if scp -i "$UPLOAD_KEY" -o BatchMode=yes "$MANIFEST" "$UPLOAD_HOST:$UPLOAD_PATH" >/dev/null 2>&1; then
+  echo "  ✓ 清单已上传"
+  # 拉回来验实际线上的响应。Content-Type 必须是 application/json ——
+  # 落进 SPA 兜底的话会拿到 200 + text/html,而客户端只会静默地"永远没有更新"。
+  FEED="https://openimg.io/api/app/mac/update.json"
+  # 用 GET 而不是 HEAD。客户端发的就是 GET,而这一步的意义正是"走一遍客户端会
+  # 走的路"。曾经写成 curl -sI,拿到的是 text/html —— 那不是清单坏了,是 HEAD
+  # 走了另一条分支,而这种"探测方法本身有偏差"的假警报比没有检查更糟。
+  CT=$(curl -s -o /dev/null -D - "$FEED" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print $2}')
+  case "$CT" in
+    application/json*) echo "  ✓ 线上可取($CT)" ;;
+    *) echo "  ✗ 线上返回的不是 JSON:${CT:-无} —— 客户端会拒收,去查那条路由" >&2 ;;
+  esac
+else
+  echo "  ⚠️  清单上传失败,手动传:$MANIFEST → $UPLOAD_HOST:$UPLOAD_PATH" >&2
+fi
+echo
+echo "把这段贴进 release notes(可选):"
+echo "  $MANIFEST.pretty.json"
