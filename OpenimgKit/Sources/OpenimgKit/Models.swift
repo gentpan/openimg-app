@@ -55,7 +55,13 @@ public enum SortKey: String, CaseIterable, Sendable, Identifiable {
         case .largest: "arrow.up.right.square"
         case .smallest: "arrow.down.right.square"
         case .widest: "aspectratio"
-        case .name: "textformat.abc"
+        // 不用 textformat.abc / character / abc 这一类:SF Symbols 会按界面
+        // 语言换字形,中文下它们渲染成「甲乙丙」——那不是图标,是三个汉字挤在
+        // 一枚图标的位置上,和旁边一排线条图形完全不是一回事。
+        //
+        // 判据是**别用带字母造型的符号**。这一列里只要含 A/Abc/ABC,就都有
+        // CJK 变体。doc.text 没有字形,配上「文件名」这个标签也读得通。
+        case .name: "doc.text"
         }
     }
     public var label: String {
