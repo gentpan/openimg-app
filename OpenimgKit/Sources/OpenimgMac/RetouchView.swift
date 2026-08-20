@@ -44,22 +44,12 @@ struct RetouchView: View {
             AISourceRow(model: model, slot: .retouch, label: L.s.retouch.sourcesLabel)
             presetRow
             promptField
-            optionRow(L.s.retouch.sizeLabel, options: model.aiSizes,
-                      label: { $0 }, selection: sizeBinding)
-            HStack(spacing: 10) {
-                optionRow(L.s.retouch.resolutionLabel, options: model.aiResolutions,
-                          label: { $0.uppercased() }, selection: resolutionBinding,
-                          followSource: false)
-                Spacer(minLength: 12)
-                // 底排本来空着一大片,而「还剩几次」正是按下生成之前最后要
-                // 确认的事——放在按钮边上比放在页面顶部一张卡里更该看见。
-                AIQuotaInline(model: model)
-                Spacer(minLength: 8)
-                Text(L.s.generate.promptCounter(model.retouchPromptLength, aiPromptLimit))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(model.retouchPromptTooLong ? AnyShapeStyle(Color.orange)
-                                                                : AnyShapeStyle(.tertiary))
-                submitButton
+            // 与生成页同一套:一行放得下就一行,放不下退回两行。这一页的尺寸
+            // 行还多一枚「跟随原图」,比生成页更宽,所以退行的判断更常触发——
+            // 正因如此不能写死,要让布局系统自己量。
+            ViewThatFits(in: .horizontal) {
+                oneLine
+                twoLines
             }
         }
         .padding(14)
@@ -134,6 +124,48 @@ struct RetouchView: View {
     /// 尺寸可以留空——上游不给 size 时按原图比例出图,这正是「只改这一处」
     /// 想要的。清晰度不行:它是计费档位,留空等于让上游自己挑,而它可能挑
     /// 最贵的 4k。给一个点了没有任何效果的档位,比不给更糟。
+    /// 宽窗口:尺寸、清晰度、余量、字数、按钮全在一行。
+    private var oneLine: some View {
+        HStack(spacing: 10) {
+            optionRow(L.s.retouch.sizeLabel, options: model.aiSizes,
+                      label: { $0 }, selection: sizeBinding)
+            optionRow(L.s.retouch.resolutionLabel, options: model.aiResolutions,
+                      label: { $0.uppercased() }, selection: resolutionBinding,
+                      followSource: false)
+            Spacer(minLength: 12)
+            tailControls
+        }
+    }
+
+    /// 窄窗口:尺寸单独一行。
+    private var twoLines: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            optionRow(L.s.retouch.sizeLabel, options: model.aiSizes,
+                      label: { $0 }, selection: sizeBinding)
+            HStack(spacing: 10) {
+                optionRow(L.s.retouch.resolutionLabel, options: model.aiResolutions,
+                          label: { $0.uppercased() }, selection: resolutionBinding,
+                          followSource: false)
+                Spacer(minLength: 12)
+                tailControls
+            }
+        }
+    }
+
+    /// 两种排法共用的尾部,写一份免得改了一处忘另一处。
+    @ViewBuilder
+    private var tailControls: some View {
+        // 「还剩几次」正是按下生成之前最后要确认的事——放在按钮边上比放在页面
+        // 顶部一张卡里更该看见。
+        AIQuotaInline(model: model)
+        Spacer(minLength: 8)
+        Text(L.s.generate.promptCounter(model.retouchPromptLength, aiPromptLimit))
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(model.retouchPromptTooLong ? AnyShapeStyle(Color.orange)
+                                                        : AnyShapeStyle(.tertiary))
+        submitButton
+    }
+
     private func optionRow(
         _ title: String,
         options: [String],
