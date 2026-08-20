@@ -42,38 +42,33 @@ struct GenerateView: View {
 
     // MARK: - 本机生成
 
-    /// 系统支持就自动出现,不支持就整行不存在。
+    /// 系统支持就自动出现,不支持就整个不存在。
     ///
-    /// 不做成设置里的开关:它的可用性由系统状态决定(芯片、系统版本、用户有没
-    /// 有打开 Apple Intelligence、地区语言),一个用户关不掉也打不开的开关只会
-    /// 让人以为是自己设错了。每次进页面现问一遍系统——用户可能刚在设置里打开,
-    /// 缓存住的话要重启才认。
+    /// 摆在底排、和「生成」并列,而不是在上面单开一条横幅。横幅那版是**卡片套
+    /// 卡片**:它自带圆角底、图标、标题、副标题和按钮,而 composer 本身已经是
+    /// 一张面板——两层盒子叠在一起,读起来像页面里插了个广告位。
     ///
-    /// 文案照实写「插画 · 动画 · 素描」。Image Playground 出不了写实图,在这儿
-    /// 承诺摄影,用户点进去只会觉得是坏了。
+    /// 并列之后层级也对了:「生成」是主操作(品牌色实心),本机是另一条路(次级)。
+    /// 那两行说明挪进悬浮提示——它是"点之前想知道的事",不是常驻信息。
+    ///
+    /// 不做成设置里的开关:可用性由系统状态决定(芯片、系统版本、用户有没有打开
+    /// Apple Intelligence、地区语言),一个用户关不掉也打不开的开关只会让人以为
+    /// 是自己设错了。每次读都现问一遍系统,不缓存——用户可能刚在设置里打开。
     @ViewBuilder
-    private var localRow: some View {
+    private var localButton: some View {
         if LocalGen.isReady {
-            HStack(spacing: 8) {
-                Image(systemName: "laptopcomputer")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.brand)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(L.s.generate.localTitle).font(.caption)
-                    Text(L.s.generate.localNote)
-                        .font(.caption2).foregroundStyle(.tertiary)
+            Button {
+                model.localGenOpen = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "laptopcomputer")
+                    Text(L.s.generate.localTitle)
                 }
-                Spacer(minLength: 8)
-                Button(L.s.generate.localOpen) { model.localGenOpen = true }
-                    .buttonStyle(QuietButton())
-                    .controlSize(.small)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(Color.brand.opacity(0.08))
-            )
+            .buttonStyle(QuietButton())
+            // 文案照实写「插画 · 动画 · 素描」。Image Playground 出不了写实图,
+            // 在这儿承诺摄影,用户点进去只会觉得是坏了。
+            .help(L.s.generate.localNote)
         }
     }
 
@@ -81,7 +76,6 @@ struct GenerateView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            localRow
             // 参考图是可选的,所以空着时收成一行(compactWhenEmpty):一件可以
             // 不做的事摆一个 64pt 高的虚线框,会把提示词框挤下去,也会让人以为
             // 那是必填。给了图之后才展开成缩略图那一行。
@@ -104,6 +98,7 @@ struct GenerateView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(model.aiPromptTooLong ? AnyShapeStyle(Color.orange)
                                                            : AnyShapeStyle(.tertiary))
+                localButton
                 submitButton
             }
         }
