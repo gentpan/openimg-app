@@ -264,6 +264,16 @@ struct Pill: View {
     }
 }
 
+/// 工具格子的尺寸。
+///
+/// 单独拎出来是因为它有**两个**使用者:普通格子和菜单格子。两处各写一遍
+/// 30×26 看着没风险,但菜单格子外面套着 Menu,它会自己再加一层内边距——两组
+/// 摆在一起时右边那组明显高一圈,而代码里两个数字一模一样,盯着看也看不出来。
+enum ToolTileSize {
+    static let width: CGFloat = 30
+    static let height: CGFloat = Metrics.control - 6
+}
+
 /// A toolbar button shaped like the reference's: a square-ish glass tile that
 /// groups with its neighbours rather than a bare system button.
 struct ToolTile: View {
@@ -278,7 +288,7 @@ struct ToolTile: View {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(disabled ? .tertiary : .secondary)
-                .frame(width: 30, height: Metrics.control - 6)
+                .frame(width: ToolTileSize.width, height: ToolTileSize.height)
                 .background {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(.white.opacity(hovering && !disabled ? 0.10 : 0))

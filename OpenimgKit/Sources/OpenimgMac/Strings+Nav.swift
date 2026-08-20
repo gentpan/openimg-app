@@ -22,7 +22,6 @@ struct NavStrings: Sendable {
     let sort: String
     let perPage: String
     let perPageCount: @Sendable (Int) -> String
-    let uploadHelp: String
 
     // 侧栏
     let searchPlaceholder: String
@@ -57,7 +56,6 @@ extension NavStrings {
         sort: "排序",
         perPage: "每页数量",
         perPageCount: { n in "\(n) 张/页" },
-        uploadHelp: "上传 (⌘U)",
         searchPlaceholder: "搜索文件名",
         availableSpace: { size in "\(size) 可用" },
         signOutHelp: "退出登录（仅移除本机令牌）")
@@ -74,7 +72,6 @@ extension NavStrings {
         sort: "Sort",
         perPage: "Images per Page",
         perPageCount: { n in "\(n) per page" },
-        uploadHelp: "Upload (⌘U)",
         searchPlaceholder: "Search file names",
         availableSpace: { size in "\(size) available" },
         signOutHelp: "Sign Out (removes the token from this Mac only)")

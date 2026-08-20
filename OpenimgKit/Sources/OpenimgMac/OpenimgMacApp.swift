@@ -183,10 +183,6 @@ struct TopBar: View {
                 ToolTile(icon: "arrow.clockwise", help: L.s.common.refresh, disabled: model.busy) {
                     Task { await model.refreshCurrent() }
                 }
-                ToolTile(icon: "arrow.up.circle", help: L.s.nav.uploadHelp) {
-                    model.section = .upload
-                    Task { await model.pickAndUpload() }
-                }
             }
         }
         .padding(.horizontal, 18)
@@ -204,12 +200,16 @@ struct TopBar: View {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
-                .frame(width: 30, height: 26)
+                .frame(width: ToolTileSize.width, height: ToolTileSize.height)
                 .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        // 外层也钉一遍。只钉 label 不够:Menu 会在 label 外面自己加一圈内边距,
+        // 于是两组格子摆在一起时高度对不上,而代码里两个尺寸是同一个常量——
+        // 那种"数字明明一样却长得不一样"最费时间。
+        .frame(width: ToolTileSize.width, height: ToolTileSize.height)
         // A borderless menu paints its label with the *accent* colour, which
         // this app sets to the brand green — so these two came out green while
         // the plain tiles beside them stayed grey. Tinting the menu itself is
