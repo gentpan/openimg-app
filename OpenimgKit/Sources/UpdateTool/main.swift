@@ -50,11 +50,17 @@ guard let cmd = args.first else { usage() }
 switch cmd {
 
 case "build-number":
-    guard args.count == 2 else { die("用法: UpdateTool build-number <版本号>") }
+    guard args.count == 2 || args.count == 3 else {
+        die("用法: UpdateTool build-number <版本号> [距 tag 的提交数]")
+    }
     guard let v = SemanticVersion(args[1]) else {
         die("解不出版本号: \(args[1]) —— 要形如 0.3.0 或 v0.3.0")
     }
-    guard let n = v.buildNumber else {
+    // 不给就是 0,也就是发布版。清单里的 build 走的正是这条路——它只有版本号,
+    // 没有 git 上下文,而发布版本来就打在 tag 上。
+    let commits = args.count == 3 ? (Int(args[2]) ?? -1) : 0
+    guard commits >= 0 else { die("提交数要是非负整数: \(args[2])") }
+    guard let n = v.buildNumber(commitsSinceTag: commits) else {
         die("\(v) 没有 build 号 —— 预发布版本不支持(见 SemanticVersion.buildNumber)")
     }
     print(n)
@@ -81,7 +87,7 @@ case "sign":
     let out = value("--out")
 
     guard let v = SemanticVersion(versionRaw) else { die("解不出版本号: \(versionRaw)") }
-    guard let build = v.buildNumber else { die("\(v) 没有 build 号") }
+    guard let build = v.buildNumber() else { die("\(v) 没有 build 号") }
     guard let zip = FileManager.default.contents(atPath: zipPath) else {
         die("读不到包: \(zipPath)")
     }

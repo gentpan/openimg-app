@@ -84,22 +84,18 @@ struct GenerateView: View {
                         compactWhenEmpty: true,
                         emptyHint: L.s.generate.refHint)
             promptField
-            optionRow(L.s.generate.sizeLabel, options: model.aiSizes,
-                      label: { $0 }, selection: sizeBinding)
-            HStack(spacing: 10) {
-                optionRow(L.s.generate.resolutionLabel, options: model.aiResolutions,
-                          label: { $0.uppercased() }, selection: resolutionBinding)
-                Spacer(minLength: 12)
-                // 底排本来空着一大片,而「还剩几次」正是按下生成之前最后要
-                // 确认的事——放在按钮边上比放在页面顶部一张卡里更该看见。
-                AIQuotaInline(model: model)
-                Spacer(minLength: 8)
-                Text(L.s.generate.promptCounter(model.aiPromptLength, aiPromptLimit))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(model.aiPromptTooLong ? AnyShapeStyle(Color.orange)
-                                                           : AnyShapeStyle(.tertiary))
-                localButton
-                submitButton
+            // 一行放得下就一行,放不下退回两行。
+            //
+            // 不硬排成一行:窗口最窄 900 时,光「尺寸」那七个胶囊就要 336pt,
+            // 加上清晰度、余量、字数和两颗按钮远远超过可用宽度。硬排的结果是
+            // 胶囊被挤扁或者按钮被推出可视区——而那种坏法只在小窗口下出现,
+            // 平时开发根本看不见。
+            //
+            // ViewThatFits 先试第一个,装不下才用第二个,判断由布局系统做,不用
+            // 自己去猜断点。
+            ViewThatFits(in: .horizontal) {
+                oneLine
+                twoLines
             }
         }
         .padding(14)
@@ -140,6 +136,47 @@ struct GenerateView: View {
                                         : .white.opacity(0.12),
                               lineWidth: 1)
         )
+    }
+
+    /// 宽窗口:尺寸、清晰度、余量、字数、两颗按钮全在一行。
+    private var oneLine: some View {
+        HStack(spacing: 10) {
+            optionRow(L.s.generate.sizeLabel, options: model.aiSizes,
+                      label: { $0 }, selection: sizeBinding)
+            optionRow(L.s.generate.resolutionLabel, options: model.aiResolutions,
+                      label: { $0.uppercased() }, selection: resolutionBinding)
+            Spacer(minLength: 12)
+            tailControls
+        }
+    }
+
+    /// 窄窗口:尺寸单独一行。
+    private var twoLines: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            optionRow(L.s.generate.sizeLabel, options: model.aiSizes,
+                      label: { $0 }, selection: sizeBinding)
+            HStack(spacing: 10) {
+                optionRow(L.s.generate.resolutionLabel, options: model.aiResolutions,
+                          label: { $0.uppercased() }, selection: resolutionBinding)
+                Spacer(minLength: 12)
+                tailControls
+            }
+        }
+    }
+
+    /// 两种排法共用的尾部。写一份,免得改了一处忘另一处。
+    @ViewBuilder
+    private var tailControls: some View {
+        // 「还剩几次」正是按下生成之前最后要确认的事——放在按钮边上比放在页面
+        // 顶部一张卡里更该看见。
+        AIQuotaInline(model: model)
+        Spacer(minLength: 8)
+        Text(L.s.generate.promptCounter(model.aiPromptLength, aiPromptLimit))
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(model.aiPromptTooLong ? AnyShapeStyle(Color.orange)
+                                                   : AnyShapeStyle(.tertiary))
+        localButton
+        submitButton
     }
 
     private func optionRow(

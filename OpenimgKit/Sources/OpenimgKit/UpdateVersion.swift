@@ -73,17 +73,32 @@ public struct SemanticVersion: Equatable, Comparable, Sendable, CustomStringConv
 extension SemanticVersion {
     /// `CFBundleVersion` 用的单调整数。
     ///
-    /// 公式是 `major × 1_000_000 + minor × 1_000 + patch`,于是 0.3.0 → 3000,
-    /// 1.0.0 → 1000000。留 1000 的余量而不是 100,是因为 patch 号在修 bug 密集
-    /// 的一周里涨得比想象中快。
+    /// 公式是 `(major × 1_000_000 + minor × 1_000 + patch) × 1_000 + 提交数`,
+    /// 于是 0.3.0 → 3_000_000,0.3.1 → 3_001_000。留 1000 的余量而不是 100,是
+    /// 因为 patch 号在修 bug 密集的一周里涨得比想象中快。
+    ///
+    /// 末尾那三位是**距最近一个 tag 的提交数**,让每次提交出来的包都有不同的
+    /// build 号——不然两个 tag 之间的所有构建都叫「0.3.0 (3000)」,装上之后
+    /// 根本分不清手里是哪一版。
+    ///
+    /// 发布版这一位恒为 0:release.sh 显式传版本号、不走 git 推断,而清单里的
+    /// build 也是由版本号单独算出来的。两边必须落在同一个数上——否则装上去的
+    /// 那一版会认为自己比清单还新,从此永远收不到更新,而且不报任何错。
+    ///
+    /// 乘 1000 而不是在原数上加:直接加的话 0.3.0 之后第 25 次提交是 3025,
+    /// 而那正是版本 0.3.25 的号——两个完全不同的东西撞在同一个数上。
+    ///
+    /// 换标度不影响已经装出去的那些:旧号最大 999_999(0.999.999),新号最小
+    /// 1_000(0.0.1),此后发布的每一版都比任何旧号大,单调性照旧成立。
     ///
     /// **预发布版没有 build 号。** 0.4.0-beta 和 0.4.0 的数字三元组相同,给它们
     /// 同一个 build 号会打破单调性,而 CFBundleVersion 的单调性正是系统用来判断
     /// "哪个更新"的依据。与其编一个能排序的规则,不如现在明确不支持——这个项目
     /// 还没发过预发布版,真要发时再设计,好过现在留一条没人验证过的路径。
-    public var buildNumber: Int? {
+    public func buildNumber(commitsSinceTag: Int = 0) -> Int? {
         guard prerelease.isEmpty else { return nil }
         guard minor < 1_000, patch < 1_000 else { return nil }
-        return major * 1_000_000 + minor * 1_000 + patch
+        guard (0..<1_000).contains(commitsSinceTag) else { return nil }
+        return (major * 1_000_000 + minor * 1_000 + patch) * 1_000 + commitsSinceTag
     }
 }

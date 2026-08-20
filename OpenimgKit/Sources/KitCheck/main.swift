@@ -2763,24 +2763,39 @@ do {
     func v(_ s: String) -> SemanticVersion { SemanticVersion(s)! }
     // 这三条钉住的是打包脚本实际会写进 CFBundleVersion 的值。改了公式而没改
     // 这里,就是让老客户端检测不到新版——不报错、不打日志。
-    check("0.3.0 → 3000", v("0.3.0").buildNumber == 3000)
-    check("1.0.0 → 1000000", v("1.0.0").buildNumber == 1_000_000)
-    check("0.0.1 → 1", v("0.0.1").buildNumber == 1)
+    check("0.3.0 → 3000000", v("0.3.0").buildNumber() == 3_000_000)
+    check("1.0.0 → 1000000000", v("1.0.0").buildNumber() == 1_000_000_000)
+    check("0.0.1 → 1000", v("0.0.1").buildNumber() == 1_000)
+
+    // 末三位是距 tag 的提交数,让两个 tag 之间的每次提交都有不同的号。
+    check("0.3.0 之后第 25 次提交", v("0.3.0").buildNumber(commitsSinceTag: 25) == 3_000_025)
+    check("发布版末三位为 0", v("0.3.0").buildNumber() == v("0.3.0").buildNumber(commitsSinceTag: 0))
+    // 这一条钉的是换标度的理由:直接在原数上加的话,0.3.0 之后第 25 次提交是
+    // 3025,而那正是版本 0.3.25 的号——两个完全不同的东西会撞在同一个数上。
+    check("提交数不会撞上后续版本号",
+          v("0.3.0").buildNumber(commitsSinceTag: 25)! < v("0.3.1").buildNumber()!)
+    check("提交数越多号越大",
+          v("0.3.0").buildNumber(commitsSinceTag: 1)! < v("0.3.0").buildNumber(commitsSinceTag: 2)!)
+    check("提交数满 1000 拒绝给号", v("0.3.0").buildNumber(commitsSinceTag: 1000) == nil)
+    check("提交数为负拒绝给号", v("0.3.0").buildNumber(commitsSinceTag: -1) == nil)
+    // 换标度不能让老用户收不到更新:旧号最大 999_999,新号最小 1_000,
+    // 此后发布的每一版都比任何旧号大。
+    check("新号仍大于旧标度的最大值", v("0.3.1").buildNumber()! > 999_999)
 
     // 单调性是 CFBundleVersion 的全部意义所在。
     let ladder = ["0.0.1", "0.1.0", "0.3.0", "0.3.1", "0.99.999", "1.0.0", "2.0.0"].map(v)
     var monotone = true
-    for (a, b) in zip(ladder, ladder.dropFirst()) where !(a.buildNumber! < b.buildNumber!) {
+    for (a, b) in zip(ladder, ladder.dropFirst()) where !(a.buildNumber()! < b.buildNumber()!) {
         monotone = false
     }
     check("版本升序时 build 号严格递增", monotone)
 
     // 预发布版没有 build 号:它和同号正式版的数字三元组相同,给同一个数会打破
     // 单调性,而单调性正是系统判断"哪个更新"的依据。宁可明确不支持。
-    check("预发布版没有 build 号", v("1.0.0-beta").buildNumber == nil)
+    check("预发布版没有 build 号", v("1.0.0-beta").buildNumber() == nil)
     // 进位余量:留 1000 而不是 100,patch 号在修 bug 密集的一周里涨得很快。
-    check("次版本到 999 仍可用", v("0.999.0").buildNumber == 999_000)
-    check("次版本超过 999 拒绝给号", v("0.1000.0").buildNumber == nil)
+    check("次版本到 999 仍可用", v("0.999.0").buildNumber() == 999_000_000)
+    check("次版本超过 999 拒绝给号", v("0.1000.0").buildNumber() == nil)
 }
 
 

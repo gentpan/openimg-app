@@ -62,7 +62,21 @@ cp "$ROOT/Resources/Fonts/LICENSE-Ubuntu.txt" "$APP/Contents/Resources/"
 # 默认版本号取自 git 上最新的 tag,而不是写死一个数。写死的那个(曾经是
 # 0.2.0)会在发过 0.3.0 之后继续骗人:直接跑 ./package-mac.sh 出来的包,
 # 「关于」里印的是一个几个月前的版本,而它跑的是当前代码。
-APP_VERSION="${APP_VERSION:-$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo 0.0.0)}"
+#
+# 距 tag 的提交数一并算出来,拼进 build 号的末三位——不然两个 tag 之间的所有
+# 构建都叫「0.3.0 (3000)」,装上之后根本分不清手里是哪一版。
+#
+# 显式传了 APP_VERSION 就当作发布(release.sh 走的正是这条),提交数按 0 算:
+# 清单里的 build 只由版本号算,两边必须落在同一个数上。
+if [[ -n "${APP_VERSION:-}" ]]; then
+  APP_COMMITS=0
+else
+  TAG="$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null || true)"
+  APP_VERSION="$(printf '%s' "${TAG#v}")"
+  [[ -n "$APP_VERSION" ]] || APP_VERSION=0.0.0
+  APP_COMMITS="$(git -C "$ROOT" rev-list "$TAG..HEAD" --count 2>/dev/null || echo 0)"
+  [[ "$APP_COMMITS" =~ ^[0-9]+$ ]] || APP_COMMITS=0
+fi
 
 # build 号由版本号算出来,算法的唯一权威在 OpenimgKit/UpdateVersion.swift,
 # 由 KitCheck 钉住。不在这里用 awk 再写一遍同一个公式:两处各写各的迟早对
@@ -73,7 +87,7 @@ APP_VERSION="${APP_VERSION:-$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/n
 # 据,恒为 1 等于把那条依据整个作废了。
 if [[ -z "${APP_BUILD:-}" ]]; then
   APP_BUILD=$(xcrun swift run --package-path "$PKG" -c "$CONFIG" UpdateTool \
-                build-number "$APP_VERSION" 2>/dev/null | tail -1)
+                build-number "$APP_VERSION" "$APP_COMMITS" 2>/dev/null | tail -1)
   [[ "$APP_BUILD" =~ ^[0-9]+$ ]] || {
     echo "算不出 build 号(版本号 $APP_VERSION)——见 SemanticVersion.buildNumber" >&2
     exit 1
