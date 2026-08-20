@@ -3,9 +3,8 @@ import Foundation
 
 /// Works out the tile size that lays `count` items out to fill a given area.
 ///
-/// 「铺满」是两个方向都铺满:格子是一个统一的非正方形,由列数反解出来。只按
-/// 正方形算的话,先用完的那一轴会锁死尺寸,另一轴多出来的整片空着——窗口越宽,
-/// 底下那片空白越大。
+/// 格子永远是正方形,边长按「恰好装下这一页」反解到最大。装不满的余量由视图
+/// 层居中消化。
 ///
 /// The usual `GridItem(.adaptive(minimum:))` solves the opposite problem: it
 /// fixes the tile and lets the row count fall where it may, so a page of 50 is
@@ -38,33 +37,22 @@ public struct GridFit: Equatable, Sendable {
                            cellWidth: minCell, cellHeight: minCell, scrolls: true)
         }
 
-        // 挑「最接近正方」的那个列数,而不是「格子最大」的那个。
+        // 回到正方形:挑「格子边长最大」的列数。
         //
-        // 两者的区别就是底下那片空白:老做法取 min(宽,高) 当边长做成正方形,于
-        // 是先用完的那一轴锁死尺寸,另一轴多出来的全空着。窗口越宽越明显——
-        // 1900×1110 放 50 张时,10 列 × 179pt 只占 943,底下整整空出 167pt。
-        //
-        // 现在两轴都铺满,格子成为一个统一的非正方形。**所有格子形状一致**,所
-        // 以它仍然扫得出是一面网格;放弃的只是"每一格恰好是正方"这一点,换来
-        // 的是不再有那片空白。
-        var best: (c: Int, r: Int, w: Double, h: Double, score: Double, aspect: Double)?
+        // 中间试过一版两轴都铺满的非正方形格子——底下确实不空了,但格子会随
+        // 窗口比例变成竖条或横条,一面本该整齐的图墙看着各行形状不一。正方形
+        // 是硬要求,而正方形填不满两个方向是几何事实:余量交给视图层去**居中**,
+        // 上下对称的留白读作页边距,不是空洞。
+        var best: (c: Int, r: Int, tile: Double)?
 
         for c in 1...count {
             let r = Int(ceil(Double(count) / Double(c)))
             let cw = (w - spacing * Double(c - 1)) / Double(c)
             let ch = (h - spacing * Double(r - 1)) / Double(r)
             guard cw >= minCell, ch >= minCell else { continue }
-
-            let aspect = max(cw / ch, ch / cw)
-            // 末行空格数也要计入。只看形状的话会挑出「8 列 4 行放 25 张」这种
-            // ——格子确实接近正方,但最后一行只有 1 张、右边空着 7 格,那同样是
-            // 一片空白,只是从下面挪到了右下角。
-            let slots = c * r
-            let emptyRatio = Double(slots - count) / Double(slots)
-            let score = aspect * (1 + 0.5 * emptyRatio)
-            if best == nil || score < best!.score {
-                best = (c, r, cw, ch, score, aspect)
-            }
+            // 边长取两轴里小的那个——最大化它,就是在最大化正方形。
+            let tile = min(cw, ch)
+            if best == nil || tile > best!.tile { best = (c, r, tile) }
         }
 
         guard let b = best else {
@@ -75,20 +63,10 @@ public struct GridFit: Equatable, Sendable {
                            cellWidth: cw, cellHeight: cw, scrolls: true)
         }
 
-        // 形状实在太扁就退回正方,宁可空一片也不要把图裁成条。
-        //
-        // 阈值 1.8:到这个比例,一张竖构图的照片会被切掉一半以上。铺满是为了好
-        // 看,把图裁毁了就本末倒置了。
-        guard b.aspect <= 1.8 else {
-            let side = floor(min(b.w, b.h))
-            return GridFit(columns: b.c, rows: b.r,
-                           cellWidth: side, cellHeight: side, scrolls: false)
-        }
-
         // 向下取整到整点:`.fixed` 列宽加起来只要比提议宽度多一丝,LazyVGrid 就
-        // 会砍掉一列,整套计算前功尽弃。高度同理取整,代价是底部最多差几点,
-        // 那是看不出来的。
-        return GridFit(columns: b.c, rows: b.r,
-                       cellWidth: floor(b.w), cellHeight: floor(b.h), scrolls: false)
+        // 会砍掉一列,整套计算前功尽弃。
+        let side = floor(best!.tile)
+        return GridFit(columns: best!.c, rows: best!.r,
+                       cellWidth: side, cellHeight: side, scrolls: false)
     }
 }

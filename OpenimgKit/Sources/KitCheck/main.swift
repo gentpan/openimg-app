@@ -383,15 +383,11 @@ check("横向不溢出",
       Double(f50.columns) * f50.cellWidth + 12 * Double(f50.columns - 1) <= 972.5)
 check("纵向不溢出",
       Double(f50.rows) * f50.cellHeight + 12 * Double(f50.rows - 1) <= 637.5)
-check("格子不至于太小", f50.cellWidth >= 72 && f50.cellHeight >= 72)
-// 铺满是两个方向都铺满。老做法把格子做成正方形,先用完的那一轴锁死尺寸,另一
-// 轴多出来的整片空着——窗口越宽空得越多。这两条钉的就是那片空白不再出现。
-check("纵向铺满（余量 < 一格）",
-      637 - (Double(f50.rows) * f50.cellHeight + 12 * Double(f50.rows - 1)) < f50.cellHeight)
-check("横向铺满（余量 < 一格）",
-      972 - (Double(f50.columns) * f50.cellWidth + 12 * Double(f50.columns - 1)) < f50.cellWidth)
-let f50Aspect = max(f50.cellWidth / f50.cellHeight, f50.cellHeight / f50.cellWidth)
-check("格子形状不至于变成条", f50Aspect <= 1.8)
+check("格子不至于太小", f50.cellWidth >= 72)
+// 正方形是硬要求:非正方形版本试过,格子随窗口比例变成竖条或横条,图墙各行
+// 形状不一。装不满的余量由视图层居中,不归求解器管。
+check("格子是正方（\(Int(f50.cellWidth))x\(Int(f50.cellHeight))）",
+      f50.cellWidth == f50.cellHeight)
 
 // 换页大小：都要能铺满，且张数越多格子越小
 let sizes = [25, 50, 100, 200].map { GridFit.solve(count: $0, in: deskGrid, spacing: 12, minCell: 72) }
@@ -411,8 +407,7 @@ check("滚动时格子仍不小于下限", tiny.cellWidth >= 72)
 
 // 少量图片时不该被拉成长条
 let three = GridFit.solve(count: 3, in: deskGrid, spacing: 12, minCell: 72)
-check("3 张时形状仍在限度内",
-      max(three.cellWidth / three.cellHeight, three.cellHeight / three.cellWidth) <= 1.8)
+check("3 张时也是正方", three.cellWidth == three.cellHeight)
 
 // 退化输入
 check("0 张不崩", GridFit.solve(count: 0, in: deskGrid, spacing: 12, minCell: 72).columns >= 1)

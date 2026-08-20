@@ -51,6 +51,10 @@ struct GalleryView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
+                // 竖向余量对半分。正方形格子装不满高度是几何事实,余量堆在底
+                // 下读作"少了一行",对半分到上下读作页边距。滚动时 minHeight
+                // 不起作用,内容本来就更高。
+                .frame(minHeight: geo.size.height)
             }
             .scrollDisabled(!fit.scrolls)
         }
