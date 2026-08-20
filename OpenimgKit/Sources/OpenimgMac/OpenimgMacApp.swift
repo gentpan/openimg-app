@@ -395,7 +395,12 @@ private struct SidebarRow: View {
                     .symbolEffect(.bounce.up.byLayer, value: active)
                     // And a slow pulse while an upload is running.
                     .symbolEffect(.pulse, isActive: busy)
-                Text(L.s.nav.section(section)).font(.system(size: 15))
+                Text(L.s.nav.section(section))
+                    .font(.system(size: 15))
+                    // 只放大文字,不放大整行。整行一起缩放的话图标也跟着变大,
+                    // 那一列的对齐就散了——而图标列是这一栏唯一的竖直基准。
+                    // scaleEffect 不参与布局,所以右端那颗小圆点不会被推走。
+                    .scaleEffect(hovering && !active ? 1.1 : 1, anchor: .leading)
                 Spacer(minLength: 0)
                 if dot {
                     Circle()
@@ -412,9 +417,7 @@ private struct SidebarRow: View {
             .padding(.horizontal, 12)
             .frame(height: Metrics.navRow)
             // 悬浮不画任何底:这一栏里唯一的边是最左那根轨道,给行加底就是又
-            // 引入一种形状。变白加放大已经够说明"指着的是这一行",而且
-            // scaleEffect 不参与布局,行高不会跟着抖。
-            .scaleEffect(hovering && !active ? 1.1 : 1, anchor: .leading)
+            // 引入一种形状。变白加文字放大已经够说明"指着的是这一行"。
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
