@@ -25,6 +25,20 @@ struct LoginView: View {
         VStack(spacing: 16) {
             header
 
+            // 登录 / 注册切换放在表单**上面**:它决定下面出现哪些字段,先选
+            // 模式再填表才顺。原来夹在表单和提交按钮中间——填完了才看见还能
+            // 切,切过去刚填的又要对着一套新字段。
+            Picker("", selection: Binding(
+                get: { model.registering },
+                set: { model.registering = $0 }
+            )) {
+                Text(L.s.login.modeSignIn).tag(false)
+                Text(L.s.login.modeRegister).tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.large)
+
             VStack(spacing: 8) {
                 Field(icon: "envelope.fill") {
                     TextField(L.s.login.emailPlaceholder, text: $model.email)
@@ -57,19 +71,6 @@ struct LoginView: View {
                     }
                 }
             }
-
-            // 登录 / 注册切换。
-            Picker("", selection: Binding(
-                get: { model.registering },
-                set: { model.registering = $0 }
-            )) {
-                Text(L.s.login.modeSignIn).tag(false)
-                Text(L.s.login.modeRegister).tag(true)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.large)
-            .padding(.bottom, 2)
 
             Button {
                 Task { await model.primaryAction() }
