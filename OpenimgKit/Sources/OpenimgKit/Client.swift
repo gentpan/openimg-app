@@ -124,12 +124,14 @@ public struct OpenimgClient: Sendable {
     public func updatePreferences(
         uploadMode: UploadMode? = nil,
         variantFormat: VariantFormat? = nil,
-        maxImageWidth: Int? = nil
+        maxImageWidth: Int? = nil,
+        timezone: String? = nil
     ) async throws {
         var body: [String: Any] = [:]
         if let uploadMode { body["upload_mode"] = uploadMode.rawValue }
         if let variantFormat { body["variant_format"] = variantFormat.rawValue }
         if let maxImageWidth { body["max_image_width"] = maxImageWidth }
+        if let timezone { body["timezone"] = timezone }
         guard !body.isEmpty else { return }
 
         var req = request("PATCH", "api/preferences")

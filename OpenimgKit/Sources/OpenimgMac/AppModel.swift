@@ -444,6 +444,21 @@ final class AppModel: ObservableObject {
 
     /// Called at launch. Silent on failure — an expired token should land the
     /// user on the settings tab, not greet them with a red banner.
+    /// 把本机时区报给服务器。
+    ///
+    /// 签到的"一天"从几点开始要按用户实际过的那一天算,而服务器没别的办法知道
+    /// 那是哪个时区。报一次就存在账号上,不跟着每次请求走——跟着请求走的话,
+    /// 改一下就能让"今天"变成另一天,签到可以刷。
+    ///
+    /// 失败不提示也不重试:它是纯优化,没报上去只是退回 UTC 日界,也就是这个
+    /// 字段存在之前的行为。为它弹一个错只会让人困惑。
+    private func reportTimezone() async {
+        let tz = TimeZone.current.identifier
+        guard tz != lastReportedTimezone, let c = try? client() else { return }
+        try? await c.updatePreferences(timezone: tz)
+        lastReportedTimezone = tz
+    }
+
     func restore() async {
         guard !token.isEmpty else { section = .settings; return }
         await connect(quiet: true)
@@ -451,6 +466,8 @@ final class AppModel: ObservableObject {
     }
 
     private let oauth = OAuthSignIn()
+    /// 上一次报上去的时区,避免每次连上都发一个空操作请求。
+    private var lastReportedTimezone = ""
 
     var canSubmit: Bool {
         if registering {
@@ -665,6 +682,9 @@ final class AppModel: ObservableObject {
             uploadMode = me.uploadMode.flatMap(UploadMode.init) ?? .optimized
             variantFormat = me.variantFormat.flatMap(VariantFormat.init) ?? .webp
             maxImageWidth = me.maxImageWidth ?? 0
+            // 先报时区再取额度:签到状态是按时区算的,顺序反了的话首屏会显示
+            // 上一个时区下的"今天已签到"。
+            await reportTimezone()
             quota = try? await c.quota()
             await load(resetPage: true)
             await loadStats()
