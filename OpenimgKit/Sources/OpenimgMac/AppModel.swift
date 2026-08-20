@@ -389,6 +389,8 @@ final class AppModel: ObservableObject {
     @Published var fetches: [RemoteFetch] = []
     /// 网址输入框里的内容。
     @Published var urlDraft = ""
+    /// 本机 Image Playground 弹窗开着没有。
+    @Published var localGenOpen = false
     @Published var dropping = false
 
     /// Overall progress across the batch, weighted by file size — a 40 KB icon
@@ -1378,6 +1380,32 @@ final class AppModel: ObservableObject {
     /// Worth doing locally because the daily upload count is consumed by the
     /// attempt, not by the success: learning from a 415 that HEIC is not in
     /// your tier costs one of the day's allowance either way.
+    /// 本机 Image Playground 出的图。
+    ///
+    /// **先拷一份再传**。系统给的那个 URL 指向它自己的临时区,而上传是个要走
+    /// 几秒的异步过程——中途被回收的话,失败原因会是一句"文件不存在",和真正
+    /// 发生的事毫无关系。
+    ///
+    /// 出来的图按普通上传处理,不进 AI 生成记录:那条记录是服务端那次生成的
+    /// 凭据(扣了几次、什么模型、失败能不能退),而这一张压根没经过服务端。
+    /// 硬塞进去只会让"本月还剩几次"对不上账。
+    func acceptLocalGeneration(_ url: URL) async {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openimg-local", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let name = url.lastPathComponent.isEmpty ? "image.png" : url.lastPathComponent
+        let dest = dir.appendingPathComponent(name)
+        try? FileManager.default.removeItem(at: dest)
+        do {
+            try FileManager.default.copyItem(at: url, to: dest)
+        } catch {
+            announce(message(error))
+            return
+        }
+        _ = await upload([dest])
+        try? FileManager.default.removeItem(at: dest)
+    }
+
     // MARK: - 网址取图与粘贴
 
     /// 正在下载的一条。

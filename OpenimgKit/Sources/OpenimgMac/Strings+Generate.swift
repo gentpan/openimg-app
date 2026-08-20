@@ -31,6 +31,9 @@ struct GenerateStrings: Sendable {
     let modelLabel: @Sendable (String) -> String
 
     // 提交
+    let localTitle: String
+    let localNote: String
+    let localOpen: String
     let generateAction: String
     let generating: String
     let submitted: String
@@ -94,6 +97,9 @@ extension GenerateStrings {
         resolutionLabel: "清晰度",
         modelLabel: { name in "模型 \(name)" },
 
+        localTitle: "用这台 Mac 本机生成",
+        localNote: "插画 · 动画 · 素描，不耗次数，完成后自动进图库",
+        localOpen: "打开",
         generateAction: "生成",
         generating: "生成中…",
         submitted: "已提交，出图约需几十秒",
@@ -154,6 +160,9 @@ extension GenerateStrings {
         resolutionLabel: "Detail",
         modelLabel: { name in "Model \(name)" },
 
+        localTitle: "Generate on this Mac",
+        localNote: "Illustration · animation · sketch, no credits, lands in your library",
+        localOpen: "Open",
         generateAction: "Generate",
         generating: "Generating…",
         submitted: "Submitted — this usually takes under a minute",

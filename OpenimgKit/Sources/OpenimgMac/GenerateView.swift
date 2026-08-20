@@ -34,12 +34,54 @@ struct GenerateView: View {
         .sheet(item: $model.aiPicking) { slot in
             AISourcePicker(model: model, slot: slot)
         }
+        // 把已经打好的提示词带进系统弹窗当起点。空着也行,弹窗里可以现打。
+        .localGenSheet(isPresented: $model.localGenOpen, concept: model.aiPrompt) { url in
+            Task { await model.acceptLocalGeneration(url) }
+        }
+    }
+
+    // MARK: - 本机生成
+
+    /// 系统支持就自动出现,不支持就整行不存在。
+    ///
+    /// 不做成设置里的开关:它的可用性由系统状态决定(芯片、系统版本、用户有没
+    /// 有打开 Apple Intelligence、地区语言),一个用户关不掉也打不开的开关只会
+    /// 让人以为是自己设错了。每次进页面现问一遍系统——用户可能刚在设置里打开,
+    /// 缓存住的话要重启才认。
+    ///
+    /// 文案照实写「插画 · 动画 · 素描」。Image Playground 出不了写实图,在这儿
+    /// 承诺摄影,用户点进去只会觉得是坏了。
+    @ViewBuilder
+    private var localRow: some View {
+        if LocalGen.isReady {
+            HStack(spacing: 8) {
+                Image(systemName: "laptopcomputer")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.brand)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(L.s.generate.localTitle).font(.caption)
+                    Text(L.s.generate.localNote)
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
+                Spacer(minLength: 8)
+                Button(L.s.generate.localOpen) { model.localGenOpen = true }
+                    .buttonStyle(QuietButton())
+                    .controlSize(.small)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(Color.brand.opacity(0.08))
+            )
+        }
     }
 
     // MARK: - 输入
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
+            localRow
             // 参考图是可选的,所以空着时收成一行(compactWhenEmpty):一件可以
             // 不做的事摆一个 64pt 高的虚线框,会把提示词框挤下去,也会让人以为
             // 那是必填。给了图之后才展开成缩略图那一行。
