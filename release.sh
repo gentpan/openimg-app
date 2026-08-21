@@ -92,6 +92,38 @@ else
   exit 1
 fi
 
+# DMG:给网站下载用的那一份,带「拖进应用程序」的引导。
+#
+# 两个产物各司其职,不是重复:zip 给更新器(程序自己解压替换,不需要引导),
+# dmg 给人手动下载。只发 zip 的话,解压出来的 app 多半留在「下载」里被就地
+# 双击,那会触发 App Translocation —— 只读随机路径,自我更新永久失效。
+#
+# 造盘失败不阻断发布:zip 已经能用,为了一张引导盘让整个发布回滚不值当。
+echo "4.5/5 造安装盘…"
+DMG="$ROOT/build/OpenImg-$VERSION.dmg"
+if ./make-dmg.sh "$APP" "$DMG" "${VERSION#v}" >/dev/null 2>&1; then
+  # DMG 自己也要签名并公证。不签的话用户双击会被 Gatekeeper 拦下,
+  # 而里面的 app 签得再好也没用 —— 他根本打不开这张盘。
+  codesign --force --sign "$IDENTITY" --timestamp "$DMG"
+  xcrun notarytool submit "$DMG" --keychain-profile openimg-notary --wait \
+    | tee /tmp/openimg-dmg-notary.log
+  if grep -q "status: Accepted" /tmp/openimg-dmg-notary.log; then
+    xcrun stapler staple "$DMG"
+    echo "  ✓ 安装盘已签名并公证"
+  else
+    echo "  ⚠️  安装盘公证未通过,本次只发 zip" >&2
+    rm -f "$DMG"
+  fi
+else
+  echo "  ⚠️  造盘失败,本次只发 zip" >&2
+  rm -f "$DMG"
+fi
+
+# 资产用数组收集:${DMG:+...} 那种条件展开在盘不存在时会传一个空串给 gh,
+# 而 gh 会把空串当成一个文件名去找,报一句和真实情况无关的错。
+ASSETS=("$ZIP")
+[ -f "$DMG" ] && ASSETS+=("$DMG")
+
 echo "5/5 创建 GitHub Release…"
 # 有 release-notes/<版本>.md 就用它,没有才退回那句通用说明。
 #
@@ -99,10 +131,10 @@ echo "5/5 创建 GitHub Release…"
 # 永远是"改了什么"。让说明和代码一起进版本库,发版时就不会临时去补。
 NOTES="$ROOT/release-notes/$VERSION.md"
 if [[ -f "$NOTES" ]]; then
-  gh release create "$VERSION" "$ZIP" --title "$VERSION" --notes-file "$NOTES" --latest
+  gh release create "$VERSION" "${ASSETS[@]}" --title "$VERSION" --notes-file "$NOTES" --latest
 else
   echo "  (没有 release-notes/$VERSION.md,用通用说明)"
-  gh release create "$VERSION" "$ZIP" \
+  gh release create "$VERSION" "${ASSETS[@]}" \
     --title "$VERSION" \
     --notes "Developer ID 签名并已公证 —— 下载解压,拖进「应用程序」直接打开。" \
     --latest
