@@ -38,11 +38,26 @@ struct UpdateRow: View {
                     Text(L.s.settings.updateStale(stale))
                         .font(.caption2).foregroundStyle(.tertiary)
                 }
-                if let notes = r.notesURL {
-                    Button(L.s.settings.updateNotes) { NSWorkspace.shared.open(notes) }
-                        .buttonStyle(BrandButton())
-                        .controlSize(.small)
+                HStack(spacing: 8) {
+                    Button(L.s.settings.updateInstall) {
+                        Task { await checker.downloadAndInstall(r, localBuild: AppVersion.build) }
+                    }
+                    .buttonStyle(BrandButton())
+                    .controlSize(.small)
+                    if let notes = r.notesURL {
+                        Button(L.s.settings.updateNotes) { NSWorkspace.shared.open(notes) }
+                            .buttonStyle(QuietButton())
+                            .controlSize(.small)
+                    }
                 }
+            }
+            if case .downloading(_, let p) = checker.state {
+                ProgressBar(value: p).frame(height: 4)
+            }
+            if case .installed = checker.state {
+                Button(L.s.settings.updateRelaunch) { UpdateInstaller.relaunch() }
+                    .buttonStyle(BrandButton())
+                    .controlSize(.small)
             }
         }
     }
@@ -55,6 +70,12 @@ struct UpdateRow: View {
             Text(L.s.settings.updateChecking).font(.caption).foregroundStyle(.secondary)
         case .upToDate:
             Text(L.s.settings.updateUpToDate).font(.caption).foregroundStyle(.secondary)
+        case .downloading(let r, let p):
+            Text(L.s.settings.updateDownloading(r.version.description, Int(p * 100)))
+                .font(.callout.weight(.medium)).foregroundStyle(Color.brand)
+        case .installed(let v):
+            Text(L.s.settings.updateInstalled(v.description))
+                .font(.callout.weight(.medium)).foregroundStyle(Color.brand)
         case .available(let r, _, _):
             Text(L.s.settings.updateAvailable(r.version.description))
                 .font(.callout.weight(.medium))

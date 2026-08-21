@@ -18,6 +18,13 @@ final class UpdateChecker: ObservableObject {
         case available(UpdateManifest.Release, stale: Int?, urgent: Bool)
         case blocked(UpdateVerdict.BlockedReason, latest: SemanticVersion)
         case failed(String)
+        /// 正在下载,0…1。
+        case downloading(UpdateManifest.Release, Double)
+        /// 已就位,等用户点「立即重开」。
+        ///
+        /// 不自动重启:用户可能正传着图、正编辑着。安装完成与重启分成两步,是把
+        /// "什么时候打断我"这个决定留给他。
+        case installed(SemanticVersion)
     }
 
     @Published private(set) var state: State = .idle
@@ -45,6 +52,40 @@ final class UpdateChecker: ObservableObject {
         let last = UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date
         if let last, Date().timeIntervalSince(last) < Self.interval { return }
         await check()
+    }
+
+    /// 下载 → 验证 → 替换。成功后停在 .installed 等用户点重开。
+    ///
+    /// 每一步失败都停在 .failed 并说清原因,不"尽力而为"地继续——这条链的每一
+    /// 环都是安全边界,跳过任何一环都等于把它整个作废。
+    func downloadAndInstall(_ release: UpdateManifest.Release, localBuild: Int) async {
+        // 先问能不能装,再下载。装不了的话,下 8 MB 再告诉用户"其实装不了"是在
+        // 浪费他的时间和流量。
+        do {
+            try UpdateInstaller.selfCheck()
+        } catch {
+            state = .failed((error as? LocalizedError)?.errorDescription
+                            ?? error.localizedDescription)
+            return
+        }
+
+        state = .downloading(release, 0)
+        do {
+            let zip = try await UpdateInstaller.download(release) { [weak self] p in
+                Task { @MainActor in
+                    guard let self, case .downloading = self.state else { return }
+                    self.state = .downloading(release, p)
+                }
+            }
+            defer { try? FileManager.default.removeItem(at: zip) }
+            let verified = try UpdateInstaller.verify(zip: zip, expecting: release,
+                                                      localBuild: localBuild)
+            try UpdateInstaller.install(verified)
+            state = .installed(release.version)
+        } catch {
+            state = .failed((error as? LocalizedError)?.errorDescription
+                            ?? error.localizedDescription)
+        }
     }
 
     /// 用户主动点「检查更新」时调,不看间隔。

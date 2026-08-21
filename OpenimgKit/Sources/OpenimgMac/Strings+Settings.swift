@@ -25,6 +25,10 @@ struct SettingsStrings: Sendable {
     let updateUpToDate: String
     let updateAvailable: @Sendable (String) -> String
     let updateNotes: String
+    let updateInstall: String
+    let updateRelaunch: String
+    let updateDownloading: @Sendable (String, Int) -> String
+    let updateInstalled: @Sendable (String) -> String
     let updateStale: @Sendable (Int) -> String
     let updateUrgent: String
     let updateTooOld: @Sendable (String) -> String
@@ -226,6 +230,10 @@ extension SettingsStrings {
         updateUpToDate: "已是最新版本",
         updateAvailable: { v in "有新版本 \(v)" },
         updateNotes: "查看发布说明",
+        updateInstall: "下载并安装",
+        updateRelaunch: "立即重开",
+        updateDownloading: { v, pct in "正在下载 \(v)… \(pct)%" },
+        updateInstalled: { v in "\(v) 已就位，重开即可生效" },
         updateStale: { d in "更新信息已过期 \(d) 天，建议去发布页确认一下" },
         updateUrgent: "这一版建议尽快升级",
         updateTooOld: { v in "新版需要 macOS \(v) 或更新版本" },
@@ -426,6 +434,10 @@ extension SettingsStrings {
         updateUpToDate: "You are on the latest version",
         updateAvailable: { v in "Version \(v) is available" },
         updateNotes: "Release notes",
+        updateInstall: "Download and install",
+        updateRelaunch: "Relaunch now",
+        updateDownloading: { v, pct in "Downloading \(v)… \(pct)%" },
+        updateInstalled: { v in "\(v) is ready — relaunch to use it" },
         updateStale: { d in "This update info is \(d) days stale — worth checking the releases page" },
         updateUrgent: "Updating soon is recommended",
         updateTooOld: { v in "The new version needs macOS \(v) or later" },
