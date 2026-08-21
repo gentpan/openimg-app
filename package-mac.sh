@@ -185,7 +185,11 @@ if [ -n "${SIGN_IDENTITY:-}" ]; then
   RESOLVED_ENT="$(mktemp -t openimg-ent).plist"
   trap 'rm -f "$RESOLVED_ENT"' EXIT
   if [ -n "$ENTITLEMENTS" ]; then
-    sed "s/\$(AppIdentifierPrefix)/$TEAM_ID./g" "$ENTITLEMENTS" > "$RESOLVED_ENT"
+    # 两个占位符含义不同:AppIdentifierPrefix 带尾点(WPDUNPG5N8.),用于拼
+    # "前缀+bundle id";TeamIdentifier 不带,是团队号本身。混用会签出一条
+    # 形如 "WPDUNPG5N8..io.openimg.mac" 的非法授权。
+    sed -e "s/\$(AppIdentifierPrefix)/$TEAM_ID./g" \
+        -e "s/\$(TeamIdentifier)/$TEAM_ID/g" "$ENTITLEMENTS" > "$RESOLVED_ENT"
     codesign --force --options runtime --timestamp \
              --sign "$SIGN_IDENTITY" \
              --entitlements "$RESOLVED_ENT" \

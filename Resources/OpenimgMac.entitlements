@@ -12,6 +12,19 @@
        identifier, and an ad-hoc signature has none. It also needs the server
        half — https://openimg.io/.well-known/apple-app-site-association must
        list TEAMID.io.openimg.mac (see backend/internal/api/apple_assoc.go). -->
+  <!-- 应用标识符。**Passkey 的前置条件**,不是可选的元数据。
+       少了它,平台凭证 API 直接报「The calling process does not have an
+       application identifier」——而 associated-domains 和 keychain-access-groups
+       都写对了也没用,因为那两条正是**按这个标识符**去核验的。
+       实测：描述文件里一直授权着它,只是我们签名时没带上。 -->
+  <key>com.apple.application-identifier</key>
+  <string>$(AppIdentifierPrefix)io.openimg.mac</string>
+
+  <!-- 团队标识符。注意这里**不带**尾点,而 AppIdentifierPrefix 展开后是
+       "WPDUNPG5N8." —— 所以用单独的占位符,由打包脚本替换。 -->
+  <key>com.apple.developer.team-identifier</key>
+  <string>$(TeamIdentifier)</string>
+
   <key>com.apple.developer.associated-domains</key>
   <array>
     <string>webcredentials:openimg.io</string>
