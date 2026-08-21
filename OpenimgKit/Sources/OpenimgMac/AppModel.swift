@@ -513,6 +513,9 @@ final class AppModel: ObservableObject {
     /// 上一次报上去的时区,避免每次连上都发一个空操作请求。
     private var lastReportedTimezone = ""
 
+    /// 上一次原生 Passkey 失败的原因,用来在回落时说清楚。
+    var lastPasskeyFailure: String?
+
     /// 这台机器上是否已知有本服务器的 Passkey。
     ///
     /// macOS 没有「静默问一下有没有凭证」的 API(`performAutoFillAssistedRequests`
@@ -636,7 +639,9 @@ final class AppModel: ObservableObject {
                     // 出来的却是浏览器授权框,他不知道是自己点错了、还是坏了。
                     // 最常见的原因其实很平常——这台机器上还没有这个域名的
                     // Passkey(要先在设置里创建一把),而不是"功能不可用"。
-                    announce(L.s.login.passkeyFallingBack, seconds: 6)
+                    announce(lastPasskeyFailure.map { L.s.login.passkeyFailedWhy($0) }
+                             ?? L.s.login.passkeyFallingBack, seconds: 8)
+                    lastPasskeyFailure = nil
                     code = try await oauth.startWebLogin(server: server)
                 }
             case .google, .github:
@@ -649,6 +654,8 @@ final class AppModel: ObservableObject {
             )
             token = minted
             await connect()
+        } catch is CancellationError {
+            return // 用户按了取消,不是错误
         } catch {
             account = nil
             announce(message(error))
@@ -684,12 +691,21 @@ final class AppModel: ObservableObject {
             // Passkey」(扫码/蓝牙)一并列出来——凭证可能在 iPhone 上,或在另一
             // 台 Mac 的钥匙串里。只有在完全不知情时才用「仅限本机立即可用」快速
             // 失败,免得对着一个空面板干等。
-            asr = try await PasskeyEnroller().assert(
-                rpID: rpID, challenge: challenge,
-                immediateOnly: !hasLocalPasskey)
+            // 永远走完整流程,不再用 preferImmediatelyAvailableCredentials。
+            //
+            // 那个选项只认「本机立即可用」的凭证,会把两类真实存在的 Passkey 一
+            // 并排除:存在 iPhone 上的(要扫码)、以及在浏览器自带密码管理器里创
+            // 建的。用户明明有一把,点下去却快速失败回落网页——比对着面板等更
+            // 让人困惑。宁可多弹一个可以取消的系统面板。
+            asr = try await PasskeyEnroller().assert(rpID: rpID, challenge: challenge)
+        } catch let e as ASAuthorizationError where e.code == .canceled {
+            // 用户自己按了取消:那是明确的"不用这个",别再拿网页去烦他。
+            throw CancellationError()
         } catch {
-            // 系统拒绝(没资格)或用户取消,两者都退回 nil 让调用方决定。
+            // 系统拒绝。把原因**显示出来**——日志会被系统丢掉,而"点了指纹却弹
+            // 出浏览器"这件事如果不说原因,用户只能一遍遍试。
             NSLog("[openimg] 本机 Passkey 不可用,回落网页: %@", String(describing: error))
+            lastPasskeyFailure = (error as NSError).localizedDescription
             return nil
         }
         guard let raw = asr.credentialID as Data?,
