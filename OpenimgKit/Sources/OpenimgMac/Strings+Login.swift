@@ -25,6 +25,7 @@ struct LoginStrings: Sendable {
 
     // 注册。与登录共用邮箱和密码两栏,所以这里只补它多出来的那几样。
     let passkeyFallingBack: String
+    let passkeyNotSetUp: String
     let modeSignIn: String
     let modeRegister: String
     let namePlaceholder: String
@@ -61,6 +62,7 @@ extension LoginStrings {
         signInWith: { provider in "使用 \(provider) 登录" },
 
         passkeyFallingBack: "这台设备上还没有 openimg.io 的 Passkey，先用网页登录；登录后可在「设置 → 登录与安全」里添加。",
+        passkeyNotSetUp: "这台设备还没有 Passkey —— 先用其他方式登录，再到「设置 → 登录与安全」添加",
         modeSignIn: "登录",
         modeRegister: "注册",
         namePlaceholder: "昵称",
@@ -91,6 +93,7 @@ extension LoginStrings {
         signInWith: { provider in "Sign in with \(provider)" },
 
         passkeyFallingBack: "No passkey for openimg.io on this Mac yet — signing in via the web; you can add one in Settings afterwards.",
+        passkeyNotSetUp: "No passkey on this Mac yet — sign in another way first, then add one in Settings",
         modeSignIn: "Sign in",
         modeRegister: "Sign up",
         namePlaceholder: "Display name",

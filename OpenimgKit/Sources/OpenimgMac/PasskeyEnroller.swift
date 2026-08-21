@@ -51,7 +51,13 @@ final class PasskeyEnroller: NSObject, @unchecked Sendable,
             c.delegate = self
             c.presentationContextProvider = self
             controller = c
-            c.performRequests()
+            // preferImmediatelyAvailableCredentials:这台设备上没有可用凭证时
+            // **立刻失败**,而不是弹一个空的系统面板让用户对着发呆。
+            //
+            // 没有它的话,"还没创建过 Passkey"和"用户按了取消"在调用方看来一模
+            // 一样——都是一个 canceled 错误,于是只能静默回落网页,而用户点的
+            // 明明是指纹。
+            c.performRequests(options: .preferImmediatelyAvailableCredentials)
         }
     }
 
@@ -117,6 +123,7 @@ extension AppModel {
                                                  attestationObject: att,
                                                  clientDataJSON: reg.rawClientDataJSON))
             await loadPasskeys()
+            hasLocalPasskey = true
             passkeyCodeSent = false
             announce(L.s.settings.passkeyAdded)
             return true

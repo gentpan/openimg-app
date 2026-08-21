@@ -93,15 +93,23 @@ struct LoginView: View {
             // would make the alternatives outrank the main path.
             HStack(spacing: 8) {
                 ForEach(SignInMethod.allCases) { m in
+                    // 指纹那颗按已知状态上色:有 Passkey 才是品牌色,没有就灰着
+                    // 并在悬浮里说清。**灰而不禁用**——从别的设备经 iCloud 钥匙
+                    // 串同步来的凭证本机并不知道,禁用会挡住一个其实能用的入口。
+                    let ready = m != .passkey || model.hasLocalPasskey
                     Button { Task { await model.signIn(with: m) } } label: {
                         m.mark
+                            .foregroundStyle(m == .passkey
+                                             ? (ready ? AnyShapeStyle(Color.brand)
+                                                      : AnyShapeStyle(.tertiary))
+                                             : AnyShapeStyle(.primary))
                             .frame(width: 20, height: 20)
                             .frame(maxWidth: .infinity)
                             .frame(height: 40)
                     }
                     .buttonStyle(QuietButton())
                     .disabled(model.busy)
-                    .help(m.title)
+                    .help(ready ? m.title : L.s.login.passkeyNotSetUp)
                     .accessibilityLabel(L.s.login.signInWith(m.title))
                 }
             }
@@ -210,7 +218,6 @@ enum SignInMethod: String, CaseIterable, Identifiable {
             // and being a system symbol it carries no brand restrictions.
             Image(systemName: "touchid")
                 .font(.system(size: 19))
-                .foregroundStyle(Color.brand)
         }
     }
 }

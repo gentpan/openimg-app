@@ -513,6 +513,20 @@ final class AppModel: ObservableObject {
     /// 上一次报上去的时区,避免每次连上都发一个空操作请求。
     private var lastReportedTimezone = ""
 
+    /// 这台机器上是否已知有本服务器的 Passkey。
+    ///
+    /// macOS 没有「静默问一下有没有凭证」的 API(`performAutoFillAssistedRequests`
+    /// 是 iOS 专有),所以只能记账:注册成功、或用 Passkey 登录成功时置真。
+    ///
+    /// 它是**乐观提示而非事实**:从别的 Mac 经 iCloud 钥匙串同步过来的凭证这里
+    /// 不知道。所以按钮只是灰着,仍然可点——点下去真有凭证照样能用,真没有则由
+    /// preferImmediatelyAvailableCredentials 立刻失败并说清原因。宁可灰着能用,
+    /// 也不要禁用一个其实可用的按钮。
+    var hasLocalPasskey: Bool {
+        get { UserDefaults.standard.bool(forKey: "passkey.known.\(server)") }
+        set { UserDefaults.standard.set(newValue, forKey: "passkey.known.\(server)") }
+    }
+
     var canSubmit: Bool {
         if registering {
             // 六位码在本地先拦一道:服务端 binding 要求 len=6,少一位就是一次
@@ -614,6 +628,7 @@ final class AppModel: ObservableObject {
                 // 天天在用,没有它这个按钮在本地就是坏的。
                 if let native = try await passkeyCodeNatively() {
                     code = native
+                    hasLocalPasskey = true
                 } else {
                     // 回落网页,并说清为什么。
                     //
