@@ -680,7 +680,13 @@ final class AppModel: ObservableObject {
 
         let asr: ASAuthorizationPlatformPublicKeyCredentialAssertion
         do {
-            asr = try await PasskeyEnroller().assert(rpID: rpID, challenge: challenge)
+            // 已知这个账号有 Passkey 时走完整流程:那样系统会把「用附近设备的
+            // Passkey」(扫码/蓝牙)一并列出来——凭证可能在 iPhone 上,或在另一
+            // 台 Mac 的钥匙串里。只有在完全不知情时才用「仅限本机立即可用」快速
+            // 失败,免得对着一个空面板干等。
+            asr = try await PasskeyEnroller().assert(
+                rpID: rpID, challenge: challenge,
+                immediateOnly: !hasLocalPasskey)
         } catch {
             // 系统拒绝(没资格)或用户取消,两者都退回 nil 让调用方决定。
             NSLog("[openimg] 本机 Passkey 不可用,回落网页: %@", String(describing: error))
@@ -755,6 +761,9 @@ final class AppModel: ObservableObject {
             await load(resetPage: true)
             await loadStats()
             await aiLoadStatus()
+            // 顺手把「这个账号有没有 Passkey」带回来。放在这儿而不是只在设置页
+            // 取:登录页那颗指纹要靠它决定亮不亮,而用户不一定会先去开一次设置。
+            await loadPasskeys()
             watchSetup()
             // 上次那条「生成水印」还悬着就接着等。额度在提交那一刻就扣了,
             // 关一次 App 不该让那张图白生成——不接的话它仍会进图库,只是
@@ -1327,7 +1336,12 @@ final class AppModel: ObservableObject {
 
     func loadPasskeys() async {
         guard connected, let c = try? client() else { return }
-        passkeys = (try? await c.passkeys()) ?? []
+        guard let list = try? await c.passkeys() else { return }   // 取不到就别改判断
+        passkeys = list
+        // 账号有没有 Passkey 是**服务器上的事实**,比本机记账可靠得多:在网站上
+        // 创建的、在别的设备上创建的,这里都算数。登录一次就把这个事实带回来,
+        // 下次开 app 那颗指纹就是亮的——不必等本机再注册一把。
+        hasLocalPasskey = !list.isEmpty
     }
 
     /// Asks the server to mail a code. Deliberately not silent on success —

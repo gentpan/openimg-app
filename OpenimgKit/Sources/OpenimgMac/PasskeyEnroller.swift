@@ -40,7 +40,7 @@ final class PasskeyEnroller: NSObject, @unchecked Sendable,
     /// 不传 allowedCredentials:让系统把这台设备上、这个域名下的凭证都列出来
     /// 由用户挑。传了的话就得先问服务器"这个邮箱有哪些凭证",而那一问本身
     /// 会泄露某个邮箱注册过没有。
-    func assert(rpID: String, challenge: Data) async throws
+    func assert(rpID: String, challenge: Data, immediateOnly: Bool = true) async throws
         -> ASAuthorizationPlatformPublicKeyCredentialAssertion {
         try await withCheckedThrowingContinuation { cont in
             assertContinuation = cont
@@ -51,13 +51,21 @@ final class PasskeyEnroller: NSObject, @unchecked Sendable,
             c.delegate = self
             c.presentationContextProvider = self
             controller = c
-            // preferImmediatelyAvailableCredentials:这台设备上没有可用凭证时
-            // **立刻失败**,而不是弹一个空的系统面板让用户对着发呆。
+            // 两条路,差别在于「要不要跨设备」。
             //
-            // 没有它的话,"还没创建过 Passkey"和"用户按了取消"在调用方看来一模
-            // 一样——都是一个 canceled 错误,于是只能静默回落网页,而用户点的
-            // 明明是指纹。
-            c.performRequests(options: .preferImmediatelyAvailableCredentials)
+            // immediateOnly:只认这台机器上立即可用的凭证,没有就**立刻失败**,
+            // 而不是弹一个空面板让用户对着发呆。用在完全不知道有没有 Passkey
+            // 的时候——没有它,"还没创建过"和"用户按了取消"在调用方看来一模
+            // 一样,只能笼统回落。
+            //
+            // 完整流程:系统会把「用附近设备上的 Passkey」也列出来(扫码 / 蓝牙)。
+            // 已知账号有 Passkey 时必须走这条——凭证很可能在 iPhone 上,而
+            // immediateOnly 会把那条路一并挡掉。
+            if immediateOnly {
+                c.performRequests(options: .preferImmediatelyAvailableCredentials)
+            } else {
+                c.performRequests()
+            }
         }
     }
 
