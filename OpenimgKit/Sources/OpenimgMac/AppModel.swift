@@ -615,6 +615,13 @@ final class AppModel: ObservableObject {
                 if let native = try await passkeyCodeNatively() {
                     code = native
                 } else {
+                    // 回落网页,并说清为什么。
+                    //
+                    // 静默回落是这条路上最迷惑人的地方:用户点的是指纹图标,弹
+                    // 出来的却是浏览器授权框,他不知道是自己点错了、还是坏了。
+                    // 最常见的原因其实很平常——这台机器上还没有这个域名的
+                    // Passkey(要先在设置里创建一把),而不是"功能不可用"。
+                    announce(L.s.login.passkeyFallingBack, seconds: 6)
                     code = try await oauth.startWebLogin(server: server)
                 }
             case .google, .github:
