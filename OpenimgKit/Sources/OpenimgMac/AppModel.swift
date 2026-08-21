@@ -504,9 +504,12 @@ final class AppModel: ObservableObject {
 
     func restore() async {
         defer { restoring = false }
-        guard !token.isEmpty else { section = .settings; return }
+        // 这两条走到时界面显示的是登录页(connected 为假),section 只是背后
+        // 的状态。留成 .settings 会污染下一次登录——登录成功那一刻它还是旧值,
+        // 于是先闪一下设置页。统一停在概览。
+        guard !token.isEmpty else { section = .overview; return }
         await connect(quiet: true)
-        if !connected { section = .settings }
+        if !connected { section = .overview }
     }
 
     private let oauth = OAuthSignIn()
@@ -767,6 +770,13 @@ final class AppModel: ObservableObject {
             }
 
             account = me
+            // 先切页,再取数据。
+            //
+            // 这一句原来排在整串请求(配额、图库、统计、AI、Passkey)之后,而那
+            // 是好几秒——那几秒里显示的是退出时留下的设置页,于是登录后会先
+            // 看到设置、再自己跳到概览。页面归属在 me() 回来的那一刻就确定了,
+            // 没有理由等数据。各卡片自己的占位符负责这段空窗。
+            if !quiet { section = .overview }
             uploadMode = me.uploadMode.flatMap(UploadMode.init) ?? .optimized
             variantFormat = me.variantFormat.flatMap(VariantFormat.init) ?? .webp
             maxImageWidth = me.maxImageWidth ?? 0
@@ -787,7 +797,6 @@ final class AppModel: ObservableObject {
             Task { await wmResumeGeneration() }
             if !quiet {
                 announce(L.s.errors.connected(me.email, warning))
-                section = .overview
             }
         } catch {
             account = nil
@@ -843,7 +852,12 @@ final class AppModel: ObservableObject {
         images = []
         total = 0
         selection = []
-        section = .settings
+        // 退出后停在概览而不是设置。
+        //
+        // 停在设置是为了让人一眼看到「登录」入口,但登录页本来就是整屏的,不
+        // 存在找不到;代价却是下次登录时先闪一下设置页——因为这个值会一直留
+        // 到下次 connect() 成功。
+        section = .overview
         // 提示由 signOut 在撤销有结果之后发:成没成是两句不同的话,这里发的话
         // 只会被后面那句盖掉,或者更糟——先说"已作废"再发现没成。
     }
