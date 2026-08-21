@@ -138,6 +138,26 @@ sed -i "" -e "s|@@APP_VERSION@@|$APP_VERSION|" -e "s|@@APP_BUILD@@|$APP_BUILD|" 
 #
 # List what is available with: security find-identity -v -p codesigning
 ENTITLEMENTS="$ROOT/Resources/OpenimgMac.entitlements"
+
+# 没显式指定就自动挑钥匙串里的 Developer ID —— 本地构建默认也走正式签名。
+#
+# 原来默认 ad-hoc,代价是**本地包和发布包行为不一致**:Passkey 要
+# associated-domains 授权,而授权只在有团队身份时才生效,于是 ad-hoc 包上
+# 「添加 Passkey」必然被系统拒、登录也只能回落网页。日常测的那份和用户拿到
+# 的那份走的是两条不同的路,等于这条功能在本地根本测不了。
+#
+# 代价只是每次打包多几秒签名时间,以及机器上得有证书。没有证书时静默回落
+# ad-hoc,并说清后果——不能让没证书的人打不出包。
+if [ -z "${SIGN_IDENTITY:-}" ]; then
+  SIGN_IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
+                  | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')
+  if [ -n "$SIGN_IDENTITY" ]; then
+    echo "  自动选用签名身份：$SIGN_IDENTITY"
+  else
+    echo "  钥匙串里没有 Developer ID —— 回落 ad-hoc 签名（app 内 Passkey 会失效）"
+  fi
+fi
+
 if [ -n "${SIGN_IDENTITY:-}" ]; then
   # $(AppIdentifierPrefix) 是 Xcode 的构建变量,由 Xcode 在构建时替换成团队
   # 前缀。我们是手工 codesign,没有任何东西会去展开它——原样签进去就是一条
