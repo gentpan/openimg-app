@@ -1188,6 +1188,28 @@ final class AppModel: ObservableObject {
         if allowed.contains("tiff") { allowed.insert("tif") }
         return allowed.contains(ext)
     }
+    /// 一次最多几个文件同时在传。
+    ///
+    /// 从前这里是串行的——拖进来两百张就得一张一张地等,而每张的绝大部分时间
+    /// 都花在等服务器回话上。并发把这些等待叠起来。
+    ///
+    /// 20 是折中。再往上会同时撞三件事:服务端按账号算的限流、二十张 4K 图
+    /// 同时解码占的内存、以及上行带宽本来就那么宽——过了某个点只是让每一条
+    /// 都变慢。
+    static let maxConcurrentUploads = 20
+
+    /// 一次上传的结局。
+    ///
+    /// index 要带回来:并发之后"完成顺序"和"用户看到的顺序"不再是一回事,而
+    /// 复制链接、返回结果这两件事都该按后者来。
+    private enum UploadOutcome {
+        /// 这一张自己的问题(格式不收、剥不干净),不牵连别人。
+        case skipped
+        case done(index: Int, image: RemoteImage, link: String)
+        /// 服务端说不行(配额、日限、令牌),后面的多半也一样。
+        case failed(index: Int)
+    }
+
     /// 返回真正传上去的那几张图,顺序与入参一致。
     ///
     /// 加这个返回值是为了「传一张图,立刻拿它当 AI 的原图/参考图」:那条路
@@ -1218,27 +1240,92 @@ final class AppModel: ObservableObject {
         // accepted before anything starts moving.
         queue = items
 
-        func row(_ id: UUID) -> Int? { queue.firstIndex { $0.id == id } }
+        var uploaded: [(index: Int, image: RemoteImage)] = []
+        var lastLink: (index: Int, link: String)?
+        var hitWall = false
 
-        var done = 0
-        var lastLink = ""
-        var uploaded: [RemoteImage] = []
-        for (idx, item) in items.enumerated() {
-            let url = item.url
-            if let reason = rejectLocally(url) {
-                if let k = row(item.id) { queue[k].state = .failed(reason) }
-                continue
+        // 派发写成两段一模一样的代码,而不是抽一个 pump() 出来:嵌套函数捕获
+        // group 会让 Swift 6 的隔离检查器直接放弃("does not understand how to
+        // check")。闭包也不标 @MainActor——uploadOne 本身就是主 actor 上的方法,
+        // 从非隔离上下文 await 它会自动跳过去。
+        await withTaskGroup(of: UploadOutcome.self) { group in
+            var next = 0
+            while next < min(Self.maxConcurrentUploads, items.count) {
+                let item = items[next]
+                let idx = next
+                next += 1
+                group.addTask { await self.uploadOne(item, index: idx) }
             }
-            if let k = row(item.id) { queue[k].state = .uploading }
 
-            // Shrink first when a width limit is set. Only ever a downscale in
-            // the same format — see LocalResize for why nothing else happens on
-            // this side. Skipped entirely in original mode, where the point is
-            // to hand over the exact bytes.
-            var toSend = url
-            var temp: URL?
-            if uploadMode == .optimized, maxImageWidth > 0,
-               let smaller = LocalResize.shrink(url, maxWidth: maxImageWidth) {
+            for await outcome in group {
+                switch outcome {
+                case .skipped:
+                    break
+                case .done(let i, let img, let link):
+                    uploaded.append((i, img))
+                    if lastLink == nil || i > lastLink!.index { lastLink = (i, link) }
+                case .failed:
+                    hitWall = true
+                }
+                // 完成一个补一个,窗口始终是满的。撞过墙就不再添——在途的让它
+                // 跑完,它们多半会撞上同一堵(配额、令牌),但半路掐断一个正在
+                // 传的没有任何好处。
+                if !hitWall, next < items.count {
+                    let item = items[next]
+                    let idx = next
+                    next += 1
+                    group.addTask { await self.uploadOne(item, index: idx) }
+                }
+            }
+        }
+
+        // 还没轮到就被叫停的那些,给个明确交代,别让它们一直停在"排队中"。
+        if hitWall {
+            for k in queue.indices where queue[k].state == .queued {
+                queue[k].state = .failed(L.s.errors.cancelled)
+            }
+        }
+
+        let done = uploaded.count
+        if done > 0 {
+            if copyLink, let last = lastLink { copy(last.link) }
+            announce(done == 1 ? L.s.errors.uploadedOne : L.s.errors.uploadedMany(done))
+            quota = try? await client().quota()
+            await load(resetPage: true)
+        }
+        // 按用户看到的顺序返回,不按完成顺序。
+        return uploaded.sorted { $0.index < $1.index }.map(\.image)
+    }
+
+    /// 单个文件的完整流程:本地校验 → 缩放 → 剥元数据 → 上传。
+    ///
+    /// 整个方法在主 actor 上,但真正耗时的三步各自 await 到别处去,挂起时会
+    /// 让出 executor——所以并发是真的并发,不是二十个任务排队等同一根主线程。
+    private func uploadOne(_ item: UploadItem, index: Int) async -> UploadOutcome {
+        func row(_ id: UUID) -> Int? { queue.firstIndex { $0.id == id } }
+        let url = item.url
+
+        if let reason = rejectLocally(url) {
+            if let k = row(item.id) { queue[k].state = .failed(reason) }
+            return .skipped
+        }
+        if let k = row(item.id) { queue[k].state = .uploading }
+
+        // Shrink first when a width limit is set. Only ever a downscale in
+        // the same format — see LocalResize for why nothing else happens on
+        // this side. Skipped entirely in original mode, where the point is
+        // to hand over the exact bytes.
+        var toSend = url
+        var temp: URL?
+        if uploadMode == .optimized, maxImageWidth > 0 {
+            // 解码加重编码是纯 CPU 活,挪到后台去。从前它就跑在主 actor 上,
+            // 串行时只是让界面顿一下;并发之后二十个一起挤主线程,那一下会
+            // 变成肉眼可见的僵死。
+            let w = maxImageWidth
+            let smaller = await Task.detached(priority: .userInitiated) {
+                LocalResize.shrink(url, maxWidth: w)
+            }.value
+            if let smaller {
                 toSend = smaller
                 temp = smaller
                 if let k = row(item.id) {
@@ -1246,71 +1333,55 @@ final class AppModel: ObservableObject {
                         (try? smaller.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
                 }
             }
-            defer { if let temp { try? FileManager.default.removeItem(at: temp) } }
+        }
+        defer { if let temp { try? FileManager.default.removeItem(at: temp) } }
 
-            // 抹除定位与设备身份。剥不成就**不传**:这条路发出去的是公开外链,
-            // 一张剥不干净的照片传上去就收不回来了,失败当成阻断而不是"算了
-            // 照旧传"。
-            var stripTemp: URL?
-            let outcome = await stripBeforeUpload(toSend)
-            if let reason = stripBlockReason(outcome, source: toSend) {
-                if let k = row(item.id) { queue[k].state = .failed(reason) }
-                announce(reason)
-                continue
-            }
-            if let clean = outcome.strippedURL {
-                toSend = clean
-                stripTemp = clean
-                if let k = row(item.id) {
-                    queue[k].sentBytes =
-                        (try? clean.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
-                }
-            }
-            // strippedCopy 把产物放在自己的一次性目录里,连目录一起删。
-            defer { if let s = stripTemp { try? FileManager.default.removeItem(at: s.deletingLastPathComponent()) } }
-
-            do {
-                let id = item.id
-                // The server sees the original filename regardless of which
-                // file the bytes came from.
-                let res = try await client().upload(fileURL: toSend,
-                                                    filename: url.lastPathComponent) { [weak self] p in
-                    Task { @MainActor in
-                        guard let self, let k = self.queue.firstIndex(where: { $0.id == id })
-                        else { return }
-                        self.queue[k].progress = p
-                    }
-                }
-                if let k = row(item.id) {
-                    queue[k].state = .done
-                    queue[k].progress = 1
-                    queue[k].deduplicated = res.deduplicated
-                }
-                lastLink = linkFormat.render(res.image)
-                // 去重命中时返回的是**库里那张老图**,这正是调用方想要的:选它
-                // 当原图与选那张老图完全等价,不会凭空多出一条一模一样的记录。
-                uploaded.append(res.image)
-                done += 1
-            } catch {
-                if let k = row(item.id) { queue[k].state = .failed(message(error)) }
-                // Quota, daily cap and an invalid token all doom the rest of
-                // the batch, so mark them rather than retrying into the wall.
-                for rest in items[(idx + 1)...] {
-                    if let k = row(rest.id), queue[k].state == .queued {
-                        queue[k].state = .failed(L.s.errors.cancelled)
-                    }
-                }
-                announce(message(error))
-                break
+        // 抹除定位与设备身份。剥不成就**不传**:这条路发出去的是公开外链,
+        // 一张剥不干净的照片传上去就收不回来了,失败当成阻断而不是"算了
+        // 照旧传"。
+        var stripTemp: URL?
+        let outcome = await stripBeforeUpload(toSend)
+        if let reason = stripBlockReason(outcome, source: toSend) {
+            if let k = row(item.id) { queue[k].state = .failed(reason) }
+            announce(reason)
+            return .skipped
+        }
+        if let clean = outcome.strippedURL {
+            toSend = clean
+            stripTemp = clean
+            if let k = row(item.id) {
+                queue[k].sentBytes =
+                    (try? clean.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
             }
         }
-        if done > 0 {
-            if copyLink { copy(lastLink) }
-            announce(done == 1 ? L.s.errors.uploadedOne : L.s.errors.uploadedMany(done))
-            quota = try? await client().quota()
-            await load(resetPage: true)
+        // strippedCopy 把产物放在自己的一次性目录里,连目录一起删。
+        defer { if let s = stripTemp { try? FileManager.default.removeItem(at: s.deletingLastPathComponent()) } }
+
+        do {
+            let id = item.id
+            // The server sees the original filename regardless of which
+            // file the bytes came from.
+            let res = try await client().upload(fileURL: toSend,
+                                                filename: url.lastPathComponent) { [weak self] p in
+                Task { @MainActor in
+                    guard let self, let k = self.queue.firstIndex(where: { $0.id == id })
+                    else { return }
+                    self.queue[k].progress = p
+                }
+            }
+            if let k = row(item.id) {
+                queue[k].state = .done
+                queue[k].progress = 1
+                queue[k].deduplicated = res.deduplicated
+            }
+            // 去重命中时返回的是**库里那张老图**,这正是调用方想要的:选它
+            // 当原图与选那张老图完全等价,不会凭空多出一条一模一样的记录。
+            return .done(index: index, image: res.image, link: linkFormat.render(res.image))
+        } catch {
+            if let k = row(item.id) { queue[k].state = .failed(message(error)) }
+            announce(message(error))
+            return .failed(index: index)
         }
-        return uploaded
     }
 
     func clearQueue() { queue.removeAll() }
