@@ -57,7 +57,26 @@ spctl -a -vv "$APP" 2>&1 | sed 's/^/  /'
 # 带隔离属性起,走的才是用户下载后的那条路径。
 echo "  真实启动自检…"
 LAUNCH_DIR=$(mktemp -d)
-trap 'rm -rf "$LAUNCH_DIR"' EXIT
+
+# 自检会真的把 app 跑起来,而它一起来就查一次更新 —— 于是本机的「见过的最大
+# seq」被推到这次清单的值。防重放那道闸是**严格大于**才采信,所以发布之后,
+# 本机上任何一个旧版都会认为「已是最新版本」,更新链路再也测不出来。
+#
+# 表现极隐蔽:不报错、不打日志,只是永远查不到新版 —— 和"清单没发出去"长得
+# 一模一样。所以在这里备份,退出时原样放回(这个 trap 覆盖失败退出的路径)。
+#
+# lastCheckedAt 不还原,直接清掉:它只是"上次几点查的",清掉的效果是下次启动
+# 真的去查一次 —— 刚发完版,那正是我们要的。
+PREF_SEQ=$(defaults read io.openimg.mac update.highestSeenSeq 2>/dev/null || true)
+restore_update_prefs() {
+  if [[ "$PREF_SEQ" =~ ^[0-9]+$ ]]; then
+    defaults write io.openimg.mac update.highestSeenSeq -int "$PREF_SEQ"
+  else
+    defaults delete io.openimg.mac update.highestSeenSeq 2>/dev/null || true
+  fi
+  defaults delete io.openimg.mac update.lastCheckedAt 2>/dev/null || true
+}
+trap 'rm -rf "$LAUNCH_DIR"; restore_update_prefs' EXIT
 ditto "$APP" "$LAUNCH_DIR/OpenImg.app"
 xattr -r -w com.apple.quarantine "0083;00000000;Safari;" "$LAUNCH_DIR/OpenImg.app"
 # 先把旧实例清干净并等它真的走掉。紧接着 open 会与上一个实例的退出撞车,
