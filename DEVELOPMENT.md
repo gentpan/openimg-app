@@ -10,7 +10,7 @@
 OpenimgKit/
   Sources/OpenimgKit/     网络层、模型、钥匙串、编辑渲染   ← 为 iOS 复用设计，零依赖
   Sources/OpenimgMac/     macOS 应用（SwiftUI）
-  Sources/KitCheck/       454 项自检（可执行目标）
+  Sources/KitCheck/       693 项自检（可执行目标）
 ```
 
 ```bash
@@ -29,7 +29,7 @@ Xcode 工程 —— `.app` 只是一个目录加 `Info.plist`。
 ## 自检
 
 纯逻辑一律下沉到 `OpenimgKit`，`KitCheck` 才盯得住 —— 布局求解、EXIF 剥离、
-水印合成、格式清单、签到日界都在里面。**写在 View 里的计算，454 项自检一项都碰不到**，
+水印合成、格式清单、签到日界都在里面。**写在 View 里的计算，693 项自检一项都碰不到**，
 所以新代码但凡有算术就先想想能不能放进 Kit。
 
 ## 发布
@@ -89,4 +89,7 @@ POST   /auth/native/exchange   OAuth 回调的一次性 code 换长期令牌
 - **iOS 端**：Kit 已按两端共用设计（`.iOS(.v17)` 已声明）。阻塞在一个产品决策：
   App Store 5.1.1(v) 要求 App 内可删账号，而删号是 cookie-only —— 要么 iOS 做
   cookie 登录，要么不提供登录入口（又会撞 4.2 最低功能性）
-- Sparkle 自动更新（引第三方依赖，与零依赖纪律的取舍待定）
+- **自动更新已自己实现**（0.3.3 起完整可用），没有引 Sparkle：清单签名（Ed25519）、
+  下载校验、原子替换都在 `Update*.swift` 里，公式与格式由 KitCheck 钉住。发布时
+  `release.sh` 会签清单并传到 `openimg.io/api/app/mac/update.json` —— 清单在自己
+  的域名、包在 GitHub，单独拿下任何一边都拿不到代码执行
